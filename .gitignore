@@ -1,0 +1,12 @@
+# Build outputs & temporary binaries
+build_switch/
+*.elf
+*.o
+*.d
+gt7_switch_hud_sim
+capture_screens
+raw_screens/
+.DS_Store
+
+# Git LFS or temporary zip
+*.zip

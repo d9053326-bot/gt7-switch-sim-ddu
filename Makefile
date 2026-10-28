@@ -19,7 +19,7 @@ INCLUDES    := source
 
 APP_TITLE   := GT7 Telemetry HUD
 APP_AUTHOR  := Switch SimRacing Lab
-APP_VERSION := _aw_1.10.28.2026
+APP_VERSION := _aw_1.10.29.0727
 
 ARCH        := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 CFLAGS      := -g -Wall -O2 -ffunction-sections $(ARCH) $(DEFINES)

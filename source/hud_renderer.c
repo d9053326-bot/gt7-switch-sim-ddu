@@ -1340,18 +1340,61 @@ static void draw_ev_brand_selector(SDL_Renderer *r, const hud_ui_state_t *ui, in
     }
 }
 
+/* Helper: Draw a sleek tapered illuminated instrument needle */
+static void draw_dial_needle(SDL_Renderer *r, int cx, int cy, float deg, int length, int base_w, rgba_t color) {
+    float rad = deg * 3.14159265f / 180.0f;
+    float cos_a = cosf(rad);
+    float sin_a = sinf(rad);
+    float perp_cos = -sin_a;
+    float perp_sin = cos_a;
+
+    int tip_x = cx + (int)(length * cos_a);
+    int tip_y = cy + (int)(length * sin_a);
+
+    int b1_x = cx + (int)(base_w * perp_cos);
+    int b1_y = cy + (int)(base_w * perp_sin);
+    int b2_x = cx - (int)(base_w * perp_cos);
+    int b2_y = cy - (int)(base_w * perp_sin);
+
+    draw_thick_line(r, b1_x, b1_y, tip_x, tip_y, 2, color);
+    draw_thick_line(r, b2_x, b2_y, tip_x, tip_y, 2, color);
+    draw_thick_line(r, cx, cy, tip_x, tip_y, 3, color);
+    fill_circle(r, cx, cy, base_w + 4, color);
+    fill_circle(r, cx, cy, base_w, rgba(12, 16, 24, 255));
+}
+
+/* Helper: Draw radial tick marks with numerical graduation labels */
+static void draw_radial_dial_ticks(SDL_Renderer *r, int cx, int cy, int r_in, int r_out, float start_deg, float end_deg, int num_ticks, int major_step, rgba_t col_major, rgba_t col_minor) {
+    if (num_ticks <= 1) return;
+    float step = (end_deg - start_deg) / (float)(num_ticks - 1);
+    for (int i = 0; i < num_ticks; ++i) {
+        float deg = start_deg + i * step;
+        float rad = deg * 3.14159265f / 180.0f;
+        float c = cosf(rad);
+        float s = sinf(rad);
+        bool is_major = (major_step > 0) && (i % major_step == 0);
+        int cur_in = is_major ? (r_in - 6) : r_in;
+        int x0 = cx + (int)(cur_in * c);
+        int y0 = cy + (int)(cur_in * s);
+        int x1 = cx + (int)(r_out * c);
+        int y1 = cy + (int)(r_out * s);
+        draw_thick_line(r, x0, y0, x1, y1, is_major ? 3 : 1, is_major ? col_major : col_minor);
+    }
+}
+
 /* 1. MERCEDES-BENZ MBUX HYPERSCREEN EQ COCKPIT */
 static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const hud_ui_state_t *ui, uint32_t now_ms, int content_y, int content_h) {
     (void)now_ms;
     rgba_t eq_cyan   = rgba(0, 225, 255, 255);
     rgba_t eq_green  = rgba(0, 245, 140, 255);
+    rgba_t eq_purple = rgba(190, 75, 255, 255);
     rgba_t text_dim  = rgba(140, 155, 175, 255);
     rgba_t text_wh   = rgba(245, 250, 255, 255);
 
     draw_thick_line(r, 60, content_y + 2, 1220, content_y + 2, 2, rgba(0, 225, 255, 120));
 
     float speed = ui->use_mph ? state->speed_mph : state->speed_kmh;
-    float max_spd = ui->use_mph ? 200.0f : 320.0f;
+    float max_spd = ui->use_mph ? 200.0f : 300.0f;
     float spd_frac = speed / max_spd;
     if (spd_frac > 1.0f) spd_frac = 1.0f;
 
@@ -1364,21 +1407,44 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     float est_range = batt_pct * 4.2f;
     float kwh_lap = (state->fuel_burn_per_lap > 0.1f) ? (state->fuel_burn_per_lap * 0.85f) : 2.4f;
 
-    int cy = content_y + content_h / 2 + 6;
-    int dial_rad = (content_h > 580) ? 146 : 130;
+    int cy = content_y + content_h / 2 + 4;
+    /* Massive dial diameter approaching screen content height (diameter = 472px!) */
+    int dial_rad = (content_h > 580) ? 236 : 225;
 
-    /* LEFT DIAL: Mercedes EQ Speedometer & PRND */
-    int left_cx = 215;
+    /* LEFT DIAL: Mercedes MBUX EQ Massive Speedometer & PRND */
+    int left_cx = 242;
     fill_circle(r, left_cx, cy, dial_rad, rgba(0, 0, 0, 255));
-    draw_circle(r, left_cx, cy, dial_rad, 2, rgba(30, 48, 70, 255));
-    draw_circle(r, left_cx, cy, dial_rad - 18, 1, rgba(18, 30, 45, 255));
-    draw_segmented_arc(r, left_cx, cy, dial_rad - 6, 10, 150.0f, 390.0f, 32, spd_frac, eq_cyan, rgba(0, 0, 0, 0));
+    draw_circle(r, left_cx, cy, dial_rad, 2, rgba(24, 38, 58, 255));
+    draw_circle(r, left_cx, cy, dial_rad - 4, 1, rgba(0, 215, 255, 140));
+    draw_circle(r, left_cx, cy, dial_rad - 22, 1, rgba(20, 32, 48, 255));
 
+    /* Outer graduation ticks every 10 km/h with major ticks every 30 km/h */
+    draw_radial_dial_ticks(r, left_cx, cy, dial_rad - 18, dial_rad - 6, 140.0f, 400.0f, 31, 3, eq_cyan, rgba(40, 65, 95, 255));
+    draw_segmented_arc(r, left_cx, cy, dial_rad - 6, 8, 140.0f, 400.0f, 30, spd_frac, eq_cyan, rgba(0, 0, 0, 0));
+
+    /* Speed labels around dial ring: 0, 60, 120, 180, 240, 300 */
+    static const int spd_labels[6] = {0, 60, 120, 180, 240, 300};
+    for (int i = 0; i < 6; ++i) {
+        float deg = 140.0f + (float)i * 52.0f;
+        float rad = deg * 3.14159265f / 180.0f;
+        int tx = left_cx + (int)((dial_rad - 34) * cosf(rad));
+        int ty = cy + (int)((dial_rad - 34) * sinf(rad));
+        char lbuf[8];
+        snprintf(lbuf, sizeof(lbuf), "%d", spd_labels[i]);
+        draw_text_centered(r, lbuf, tx, ty - 6, 1, rgba(160, 185, 215, 255));
+    }
+
+    /* Illuminated Dynamic Laser Needle (drawn first so digits remain clean) */
+    float needle_deg = 140.0f + spd_frac * 260.0f;
+    draw_dial_needle(r, left_cx, cy, needle_deg, dial_rad - 24, 6, eq_cyan);
+
+    /* Center Digital Speed Readout with solid backing */
+    fill_rect(r, left_cx - 72, cy - 42, 144, 84, rgba(0, 0, 0, 245));
     int ispd = (int)roundf(speed);
-    draw_7seg_number_centered(r, ispd, 3, false, left_cx, cy - 36, 42, 62, 8, 7, text_wh, rgba(0, 0, 0, 0));
-    draw_text_centered(r, ui->use_mph ? "MPH" : "KM/H", left_cx, cy + 34, 2, eq_cyan);
+    draw_7seg_number_centered(r, ispd, 3, false, left_cx, cy - 38, 48, 74, 9, 8, text_wh, rgba(0, 0, 0, 0));
+    draw_text_centered(r, ui->use_mph ? "MPH" : "KM/H", left_cx, cy + 44, 2, eq_cyan);
 
-    int prnd_y = cy + dial_rad - 40;
+    int prnd_y = cy + dial_rad - 46;
     static const char *prnd[4] = {"P", "R", "N", "D"};
     int cur_gear = state->current_gear;
     int active_idx = 3;
@@ -1398,96 +1464,113 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
         }
     }
 
-    fill_rect(r, left_cx - 56, cy - dial_rad + 20, 112, 22, rgba(0, 0, 0, 255));
-    draw_rect(r, left_cx - 56, cy - dial_rad + 20, 112, 22, 1, eq_cyan);
-    draw_text_centered(r, "EQ SPORT", left_cx, cy - dial_rad + 25, 2, eq_cyan);
+    fill_rect(r, left_cx - 56, cy - 74, 112, 22, rgba(0, 0, 0, 245));
+    draw_rect(r, left_cx - 56, cy - 74, 112, 22, 1, eq_cyan);
+    draw_text_centered(r, "EQ SPORT", left_cx, cy - 69, 2, eq_cyan);
 
-    /* RIGHT DIAL: Mercedes EQ Power & Recuperation Meter */
-    int right_cx = SCREEN_W - 215;
+    /* RIGHT DIAL: Mercedes MBUX EQ Massive Power & Recuperation Meter */
+    int right_cx = SCREEN_W - 242;
     fill_circle(r, right_cx, cy, dial_rad, rgba(0, 0, 0, 255));
-    draw_circle(r, right_cx, cy, dial_rad, 2, rgba(30, 48, 70, 255));
-    draw_circle(r, right_cx, cy, dial_rad - 18, 1, rgba(18, 30, 45, 255));
-    draw_segmented_arc(r, right_cx, cy, dial_rad - 6, 10, 180.0f, 360.0f, 20, power_pct / 100.0f, eq_cyan, rgba(0, 0, 0, 0));
-    draw_segmented_arc(r, right_cx, cy, dial_rad - 6, 10, 180.0f, 90.0f, 14, charge_pct / 100.0f, eq_green, rgba(0, 0, 0, 0));
+    draw_circle(r, right_cx, cy, dial_rad, 2, rgba(24, 38, 58, 255));
+    draw_circle(r, right_cx, cy, dial_rad - 4, 1, rgba(0, 215, 255, 140));
+    draw_circle(r, right_cx, cy, dial_rad - 22, 1, rgba(20, 32, 48, 255));
+
+    /* Power Arc (clockwise from 180 to 360) and Charge Arc (counter-clockwise from 180 to 90) */
+    draw_radial_dial_ticks(r, right_cx, cy, dial_rad - 18, dial_rad - 6, 180.0f, 360.0f, 19, 3, eq_cyan, rgba(40, 65, 95, 255));
+    draw_radial_dial_ticks(r, right_cx, cy, dial_rad - 18, dial_rad - 6, 90.0f, 180.0f, 10, 3, eq_green, rgba(25, 60, 45, 255));
+    draw_segmented_arc(r, right_cx, cy, dial_rad - 6, 8, 180.0f, 360.0f, 20, power_pct / 100.0f, eq_cyan, rgba(0, 0, 0, 0));
+    draw_segmented_arc(r, right_cx, cy, dial_rad - 6, 8, 180.0f, 90.0f, 12, charge_pct / 100.0f, eq_green, rgba(0, 0, 0, 0));
+
+    /* Dynamic Power / Charge Needle (drawn first) */
+    float pwr_needle_deg = 180.0f;
+    if (charge_pct > 2.0f) {
+        pwr_needle_deg = 180.0f - (charge_pct / 100.0f) * 90.0f;
+        draw_dial_needle(r, right_cx, cy, pwr_needle_deg, dial_rad - 24, 6, eq_green);
+    } else {
+        pwr_needle_deg = 180.0f + (power_pct / 100.0f) * 180.0f;
+        draw_dial_needle(r, right_cx, cy, pwr_needle_deg, dial_rad - 24, 6, eq_cyan);
+    }
+
+    /* Central Solid Readout Badge to ensure needle does not obstruct text */
+    fill_rect(r, right_cx - 76, cy - 36, 152, 68, rgba(0, 0, 0, 245));
+    draw_rect(r, right_cx - 76, cy - 36, 152, 68, 1, rgba(20, 36, 56, 255));
 
     char pwr_buf[48];
     if (charge_pct > 3.0f) {
         snprintf(pwr_buf, sizeof(pwr_buf), "-%.0f kW", regen_kw);
-        draw_text_centered(r, pwr_buf, right_cx, cy - 20, 3, eq_green);
-        draw_text_centered(r, "RECUPERATION", right_cx, cy + 18, 2, eq_green);
+        draw_text_centered(r, pwr_buf, right_cx, cy - 26, 3, eq_green);
+        draw_text_centered(r, "RECUPERATION", right_cx, cy + 10, 2, eq_green);
     } else {
         snprintf(pwr_buf, sizeof(pwr_buf), "+%.0f kW", power_kw);
-        draw_text_centered(r, pwr_buf, right_cx, cy - 20, 3, eq_cyan);
-        draw_text_centered(r, "EQ POWER", right_cx, cy + 18, 2, (power_pct > 80.0f) ? rgba(215, 60, 255, 255) : eq_cyan);
+        draw_text_centered(r, pwr_buf, right_cx, cy - 26, 3, eq_cyan);
+        draw_text_centered(r, "EQ POWER", right_cx, cy + 10, 2, (power_pct > 80.0f) ? eq_purple : eq_cyan);
     }
 
-    int batt_bar_y = cy + dial_rad - 40;
-    fill_rect(r, right_cx - 60, batt_bar_y, 120, 16, rgba(0, 0, 0, 255));
-    fill_rect(r, right_cx - 60, batt_bar_y, (int)(1.2f * batt_pct), 16, (batt_pct < 20.0f) ? rgba(255, 50, 60, 255) : eq_cyan);
-    draw_rect(r, right_cx - 60, batt_bar_y, 120, 16, 1, rgba(60, 85, 120, 255));
+    int batt_bar_y = cy + dial_rad - 46;
+    fill_rect(r, right_cx - 65, batt_bar_y, 130, 18, rgba(0, 0, 0, 255));
+    fill_rect(r, right_cx - 65, batt_bar_y, (int)(1.3f * batt_pct), 18, (batt_pct < 20.0f) ? rgba(255, 50, 60, 255) : eq_cyan);
+    draw_rect(r, right_cx - 65, batt_bar_y, 130, 18, 1, rgba(60, 85, 120, 255));
     snprintf(pwr_buf, sizeof(pwr_buf), "SoC %.0f%%", batt_pct);
-    draw_text_centered(r, pwr_buf, right_cx, batt_bar_y + 2, 2, text_wh);
+    draw_text_centered(r, pwr_buf, right_cx, batt_bar_y + 3, 2, text_wh);
 
-    /* CENTER AREA: Hyperscreen Panoramic Navigation Display */
-    int center_x = left_cx + dial_rad + 18;
-    int center_w = (right_cx - dial_rad - 18) - center_x;
-    int center_y = content_y + 8;
-    int center_h = content_h - 16;
+    /* CENTER AREA: MBUX Panoramic Navigation & Telemetry Card */
+    int center_x = left_cx + dial_rad + 12;
+    int center_w = (right_cx - dial_rad - 12) - center_x;
+    int center_y = content_y + 6;
+    int center_h = content_h - 12;
 
     draw_panel(r, center_x, center_y, center_w, center_h, rgba(0, 0, 0, 255), eq_cyan, 14);
-    draw_text_centered(r, "- MERCEDES-BENZ MBUX HYPERSCREEN -", center_x + center_w / 2, center_y + 10, 2, eq_cyan);
+    draw_text_centered(r, "MBUX NAVIGATION", center_x + center_w / 2, center_y + 10, 2, eq_cyan);
 
-    /* Clean Lap Time & Delta Header Row above Map */
+    /* Lap Time & Delta Header Row (positioned with ample clearance) */
     char buf[64];
-    format_lap_time(state->current_lap_ms, buf, sizeof(buf));
-    char lap_str[64];
-    snprintf(lap_str, sizeof(lap_str), "LAP: %s", buf);
-    draw_text(r, lap_str, center_x + 18, center_y + 30, 2, text_wh);
+    char lap_str[32];
+    snprintf(lap_str, sizeof(lap_str), "LAP %d/%d", state->current_lap > 0 ? state->current_lap : 1, state->total_laps > 0 ? state->total_laps : 15);
+    draw_text(r, lap_str, center_x + 14, center_y + 32, 2, text_wh);
 
     char d_buf[32];
     snprintf(d_buf, sizeof(d_buf), "DELTA %s%.3f", (state->delta_ms <= 0) ? "-" : "+", fabsf((float)state->delta_ms / 1000.0f));
-    draw_text_right(r, d_buf, center_x + center_w - 18, center_y + 30, 2, (state->delta_ms <= 0) ? eq_green : rgba(255, 55, 65, 255));
+    draw_text_right(r, d_buf, center_x + center_w - 14, center_y + 32, 2, (state->delta_ms <= 0) ? eq_green : rgba(255, 55, 65, 255));
 
-    int map_pad = 16;
+    int map_pad = 12;
     int map_w = center_w - map_pad * 2;
-    int map_h = center_h - 175;
+    int map_h = center_h - 165;
     int map_x = center_x + map_pad;
-    int map_y = center_y + 52;
+    int map_y = center_y + 54;
     fill_rect(r, map_x, map_y, map_w, map_h, rgba(0, 0, 0, 255));
     draw_rect(r, map_x, map_y, map_w, map_h, 1, rgba(35, 50, 75, 255));
     draw_track_map_geometry(r, state, map_x + 6, map_y + 6, map_w - 12, map_h - 12, 4, 2, false);
 
+    /* Unified Bottom Card (guaranteed zero text overlap) */
     int card_y = map_y + map_h + 8;
-    int card_w = (center_w - 36) / 2;
+    int card_w = center_w - 20;
     int card_h = center_h - (card_y - center_y) - 8;
 
-    draw_panel(r, center_x + 12, card_y, card_w, card_h, rgba(0, 0, 0, 255), rgba(40, 60, 90, 255), 8);
-    draw_text(r, "RANGE & EFFICIENCY", center_x + 22, card_y + 8, 2, eq_cyan);
-    snprintf(buf, sizeof(buf), "%.0f KM", est_range);
-    draw_text(r, buf, center_x + 22, card_y + 30, 3, text_wh);
-    snprintf(buf, sizeof(buf), "AVG: %.1f kWh/lap", kwh_lap);
-    draw_text(r, buf, center_x + 22, card_y + 62, 2, text_dim);
+    draw_panel(r, center_x + 10, card_y, card_w, card_h, rgba(0, 0, 0, 255), rgba(40, 60, 90, 255), 8);
 
-    int rcx = center_x + 16 + card_w;
-    draw_panel(r, rcx, card_y, card_w, card_h, rgba(0, 0, 0, 255), rgba(40, 60, 90, 255), 8);
-    draw_text(r, "4MATIC+ MOTOR & TIRES", rcx + 14, card_y + 8, 2, eq_cyan);
-    snprintf(buf, sizeof(buf), "FL %.0fC   FR %.0fC", state->tire_temp[0], state->tire_temp[1]);
-    draw_text(r, buf, rcx + 14, card_y + 32, 2, tire_temp_color(state->tire_temp[0]));
-    snprintf(buf, sizeof(buf), "RL %.0fC   RR %.0fC", state->tire_temp[2], state->tire_temp[3]);
-    draw_text(r, buf, rcx + 14, card_y + 58, 2, tire_temp_color(state->tire_temp[2]));
+    snprintf(buf, sizeof(buf), "RANGE %.0fKM | EFF %.1fkWh", est_range, kwh_lap);
+    draw_text_centered(r, buf, center_x + center_w / 2, card_y + 10, 2, eq_cyan);
+
+    snprintf(buf, sizeof(buf), "TIRES FL %.0fC | FR %.0fC", state->tire_temp[0], state->tire_temp[1]);
+    draw_text_centered(r, buf, center_x + center_w / 2, card_y + 34, 2, text_wh);
+
+    snprintf(buf, sizeof(buf), "4MATIC+  RL %.0fC | RR %.0fC", state->tire_temp[2], state->tire_temp[3]);
+    draw_text_centered(r, buf, center_x + center_w / 2, card_y + 58, 2, text_dim);
 }
 
-/* 2. BMW i-CURVED DISPLAY / iDRIVE 8.5/9 M-EV */
+/* 2. BMW i-CURVED DISPLAY / iDRIVE 8.5/9 ///M ELECTRIC */
 static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud_ui_state_t *ui, uint32_t now_ms, int content_y, int content_h) {
-    rgba_t bmw_blue  = rgba(0, 160, 255, 255);
-    rgba_t bmw_cyan  = rgba(0, 235, 255, 255);
-    rgba_t bmw_red   = rgba(255, 45, 60, 255);
+    rgba_t bmw_blue  = rgba(0, 102, 255, 255);
+    rgba_t bmw_cyan  = rgba(0, 229, 255, 255);
+    rgba_t bmw_mred  = rgba(224, 58, 62, 255);
+    rgba_t bmw_dblue = rgba(0, 32, 91, 255);
+    rgba_t bmw_lblue = rgba(0, 163, 224, 255);
     rgba_t bmw_green = rgba(0, 230, 130, 255);
     rgba_t text_dim  = rgba(140, 155, 175, 255);
     rgba_t text_wh   = rgba(245, 250, 255, 255);
 
     float speed = ui->use_mph ? state->speed_mph : state->speed_kmh;
-    float max_spd = ui->use_mph ? 200.0f : 320.0f;
+    float max_spd = ui->use_mph ? 200.0f : 300.0f;
     float spd_frac = speed / max_spd;
     if (spd_frac > 1.0f) spd_frac = 1.0f;
 
@@ -1499,94 +1582,180 @@ static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud
     float est_range = batt_pct * 4.0f;
 
     bool eboost = (power_pct >= 90.0f);
-    bool blink = ((now_ms / 70) % 2) == 0;
+    bool blink = ((now_ms / 65) % 2) == 0;
 
-    int body_y = content_y + 8;
-    int body_h = content_h - 16;
+    int body_y = content_y + 6;
+    int body_h = content_h - 12;
     int cy = body_y + body_h / 2;
 
-    /* LEFT WING: BMW Angular Geometric Speed Bracket */
-    int left_w = 330;
-    int left_x = 20;
-    draw_panel(r, left_x, body_y, left_w, body_h, rgba(0, 0, 0, 255), bmw_blue, 12);
+    /* LEFT WING: BMW OS 9 Geometric Multi-Layered Chevron Speed Bracket */
+    int left_w = 346;
+    int left_x = 16;
+    draw_panel(r, left_x, body_y, left_w, body_h, rgba(0, 0, 0, 255), bmw_blue, 14);
 
-    /* Geometric Angular Bracket Track */
-    draw_thick_line(r, left_x + 18, body_y + body_h - 26, left_x + 18, body_y + 80, 4, rgba(35, 50, 75, 255));
-    draw_thick_line(r, left_x + 18, body_y + 80, left_x + 180, body_y + 26, 4, rgba(35, 50, 75, 255));
+    /* Double hairline outer accent border */
+    draw_rect(r, left_x + 4, body_y + 4, left_w - 8, body_h - 8, 1, rgba(20, 45, 80, 255));
 
-    int track_tot_h = (body_h - 106);
-    int lit_h = (int)(track_tot_h * spd_frac);
-    if (lit_h > 0) {
-        int v_part = lit_h;
-        if (v_part > (body_h - 106)) v_part = (body_h - 106);
-        draw_thick_line(r, left_x + 18, body_y + body_h - 26, left_x + 18, body_y + body_h - 26 - v_part, 5, bmw_cyan);
+    /* Signature BMW ///M Tri-Color Branding */
+    int m_x = left_x + 20, m_y = body_y + 16, m_w = 10, m_h = 16, m_gap = 4;
+    fill_rect(r, m_x, m_y, m_w, m_h, bmw_lblue);
+    fill_rect(r, m_x + m_w + m_gap, m_y, m_w, m_h, bmw_dblue);
+    fill_rect(r, m_x + (m_w + m_gap) * 2, m_y, m_w, m_h, bmw_mred);
+    draw_text(r, "///M ELECTRIC", m_x + (m_w + m_gap) * 3 + 6, m_y + 2, 2, bmw_cyan);
+
+    /* Faceted Geometric Chevron Track Lines */
+    int track_bot_y = body_y + body_h - 32;
+    int track_top_y = body_y + 90;
+    int track_ang_x = left_x + 195;
+    int track_ang_y = body_y + 40;
+
+    /* Outer baseline track */
+    draw_thick_line(r, left_x + 24, track_bot_y, left_x + 24, track_top_y, 3, rgba(25, 45, 75, 255));
+    draw_thick_line(r, left_x + 24, track_top_y, track_ang_x, track_ang_y, 3, rgba(25, 45, 75, 255));
+
+    /* Parallel secondary hairline */
+    draw_thick_line(r, left_x + 32, track_bot_y, left_x + 32, track_top_y + 4, 1, rgba(18, 32, 55, 255));
+    draw_thick_line(r, left_x + 32, track_top_y + 4, track_ang_x - 4, track_ang_y + 4, 1, rgba(18, 32, 55, 255));
+
+    /* Forward-angled Speedometer Tick Marks along the Faceted Bracket */
+    for (int t = 0; t <= 6; ++t) {
+        float f = (float)t / 6.0f;
+        int tx, ty;
+        if (f <= 0.65f) {
+            float sub = f / 0.65f;
+            tx = left_x + 24;
+            ty = track_bot_y - (int)(sub * (track_bot_y - track_top_y));
+        } else {
+            float sub = (f - 0.65f) / 0.35f;
+            tx = left_x + 24 + (int)(sub * (track_ang_x - (left_x + 24)));
+            ty = track_top_y - (int)(sub * (track_top_y - track_ang_y));
+        }
+        /* Slanted slash tick */
+        draw_thick_line(r, tx - 5, ty + 3, tx + 6, ty - 4, 2, bmw_cyan);
+        char s_str[8];
+        snprintf(s_str, sizeof(s_str), "%d", t * 50);
+        draw_text(r, s_str, tx + 10, ty - 6, 1, rgba(160, 185, 215, 255));
     }
 
-    draw_text(r, "///M ELECTRIC", left_x + 26, body_y + 14, 2, bmw_blue);
+    /* Dynamic illuminated speed ribbon */
+    int vert_len = track_bot_y - track_top_y;
+    int ang_len = 180;
+    int total_path = vert_len + ang_len;
+    int lit_path = (int)(spd_frac * total_path);
 
-    int left_cx = left_x + left_w / 2;
+    if (lit_path > 0) {
+        int v_lit = (lit_path > vert_len) ? vert_len : lit_path;
+        draw_thick_line(r, left_x + 24, track_bot_y, left_x + 24, track_bot_y - v_lit, 6, bmw_cyan);
+        if (lit_path > vert_len) {
+            int a_lit = lit_path - vert_len;
+            float a_frac = (float)a_lit / (float)ang_len;
+            int end_x = (left_x + 24) + (int)(a_frac * (track_ang_x - (left_x + 24)));
+            int end_y = track_top_y - (int)(a_frac * (track_top_y - track_ang_y));
+            draw_thick_line(r, left_x + 24, track_top_y, end_x, end_y, 6, bmw_cyan);
+        }
+    }
+
+    int left_cx = left_x + left_w / 2 + 10;
     int ispd = (int)roundf(speed);
-    draw_7seg_number_centered(r, ispd, 3, false, left_cx, cy - 36, 44, 70, 9, 8, text_wh, rgba(0, 0, 0, 0));
-    draw_text_centered(r, ui->use_mph ? "MPH" : "KM/H", left_cx, cy + 42, 2, bmw_cyan);
+    draw_7seg_number_centered(r, ispd, 3, false, left_cx, cy - 40, 48, 76, 9, 8, text_wh, rgba(0, 0, 0, 0));
+    draw_text_centered(r, ui->use_mph ? "MPH" : "KM/H", left_cx, cy + 44, 2, bmw_cyan);
 
-    fill_rect(r, left_cx - 65, cy + 76, 130, 28, rgba(0, 0, 0, 255));
-    draw_rect(r, left_cx - 65, cy + 76, 130, 28, 2, bmw_blue);
-    draw_text_centered(r, eboost ? "SPORT BOOST" : "SPORT", left_cx, cy + 82, 2, eboost ? bmw_cyan : text_wh);
+    fill_rect(r, left_cx - 70, cy + 80, 140, 28, rgba(0, 0, 0, 255));
+    draw_rect(r, left_cx - 70, cy + 80, 140, 28, 2, eboost ? bmw_cyan : bmw_blue);
+    draw_text_centered(r, eboost ? "SPORT BOOST" : "M EFFICIENT", left_cx, cy + 86, 2, eboost ? bmw_cyan : text_wh);
 
     draw_text_centered(r, "ASSIST: ACTIVE", left_cx, body_y + body_h - 26, 2, text_dim);
 
-    /* RIGHT WING: BMW ePOWER & eBOOST Polygon Meter */
-    int right_x = SCREEN_W - 20 - left_w;
-    draw_panel(r, right_x, body_y, left_w, body_h, rgba(0, 0, 0, 255), bmw_blue, 12);
+    /* RIGHT WING: BMW ePOWER & eBOOST Symmetrical Inverted Polygonal Bracket */
+    int right_w = left_w;
+    int right_x = SCREEN_W - 16 - right_w;
+    draw_panel(r, right_x, body_y, right_w, body_h, rgba(0, 0, 0, 255), bmw_blue, 14);
+    draw_rect(r, right_x + 4, body_y + 4, right_w - 8, body_h - 8, 1, rgba(20, 45, 80, 255));
 
-    /* Inverted Geometric Angular Bracket Track on Right */
-    draw_thick_line(r, right_x + left_w - 18, body_y + body_h - 26, right_x + left_w - 18, body_y + 80, 4, rgba(35, 50, 75, 255));
-    draw_thick_line(r, right_x + left_w - 18, body_y + 80, right_x + left_w - 180, body_y + 26, 4, rgba(35, 50, 75, 255));
+    draw_text_right(r, "BMW i-DRIVE 9.0", right_x + right_w - 20, body_y + 16, 2, bmw_cyan);
 
-    int lit_r = (int)(track_tot_h * (power_pct / 100.0f));
-    if (lit_r > 0) {
-        draw_thick_line(r, right_x + left_w - 18, body_y + body_h - 26, right_x + left_w - 18, body_y + body_h - 26 - lit_r, 5,
-                        eboost ? (blink ? bmw_cyan : bmw_red) : bmw_blue);
+    /* Symmetrical Inverted Faceted Geometric Chevron Track on Right */
+    int r_track_x = right_x + right_w - 24;
+    int r_ang_x = right_x + right_w - 195;
+
+    draw_thick_line(r, r_track_x, track_bot_y, r_track_x, track_top_y, 3, rgba(25, 45, 75, 255));
+    draw_thick_line(r, r_track_x, track_top_y, r_ang_x, track_ang_y, 3, rgba(25, 45, 75, 255));
+
+    draw_thick_line(r, r_track_x - 8, track_bot_y, r_track_x - 8, track_top_y + 4, 1, rgba(18, 32, 55, 255));
+    draw_thick_line(r, r_track_x - 8, track_top_y + 4, r_ang_x + 4, track_ang_y + 4, 1, rgba(18, 32, 55, 255));
+
+    /* Power / Regen Graduation Ticks (mirrored slashes) */
+    for (int t = 0; t <= 5; ++t) {
+        float f = (float)t / 5.0f;
+        int tx, ty;
+        if (f <= 0.65f) {
+            float sub = f / 0.65f;
+            tx = r_track_x;
+            ty = track_bot_y - (int)(sub * (track_bot_y - track_top_y));
+        } else {
+            float sub = (f - 0.65f) / 0.35f;
+            tx = r_track_x - (int)(sub * (r_track_x - r_ang_x));
+            ty = track_top_y - (int)(sub * (track_top_y - track_ang_y));
+        }
+        draw_thick_line(r, tx - 6, ty - 4, tx + 5, ty + 3, 2, (t >= 4) ? bmw_mred : bmw_cyan);
+        char p_str[8];
+        snprintf(p_str, sizeof(p_str), "%d", t * 20);
+        draw_text_right(r, p_str, tx - 10, ty - 6, 1, (t >= 4) ? bmw_mred : rgba(160, 185, 215, 255));
     }
 
-    draw_text_right(r, "BMW i-DRIVE 9.0", right_x + left_w - 26, body_y + 14, 2, bmw_blue);
+    /* Power / Regen Fill Ribbon */
+    int p_lit = (int)((power_pct / 100.0f) * total_path);
+    if (p_lit > 0) {
+        int v_lit = (p_lit > vert_len) ? vert_len : p_lit;
+        draw_thick_line(r, r_track_x, track_bot_y, r_track_x, track_bot_y - v_lit, 6,
+                        eboost ? (blink ? bmw_cyan : bmw_mred) : bmw_blue);
+        if (p_lit > vert_len) {
+            int a_lit = p_lit - vert_len;
+            float a_frac = (float)a_lit / (float)ang_len;
+            int end_x = r_track_x - (int)(a_frac * (r_track_x - r_ang_x));
+            int end_y = track_top_y - (int)(a_frac * (track_top_y - track_ang_y));
+            draw_thick_line(r, r_track_x, track_top_y, end_x, end_y, 6,
+                            eboost ? (blink ? bmw_cyan : bmw_mred) : bmw_mred);
+        }
+    }
 
-    int right_cx = right_x + left_w / 2;
+    int right_cx = right_x + right_w / 2 - 10;
     char bbuf[128];
 
     if (eboost) {
-        fill_rect(r, right_x + 28, cy - 80, left_w - 56, 32, blink ? bmw_cyan : bmw_red);
-        draw_text_centered(r, ">> eBOOST ACTIVE <<", right_cx, cy - 72, 2, rgba(0, 0, 0, 255));
+        fill_rect(r, right_cx - 75, cy - 84, 150, 30, blink ? bmw_cyan : bmw_mred);
+        draw_rect(r, right_cx - 75, cy - 84, 150, 30, 1, text_wh);
+        draw_text_centered(r, ">> eBOOST <<", right_cx, cy - 76, 2, rgba(0, 0, 0, 255));
     }
 
     if (charge_pct > 3.0f) {
         snprintf(bbuf, sizeof(bbuf), "-%.0f kW", regen_kw);
-        draw_text_centered(r, bbuf, right_cx, cy - 20, 3, bmw_green);
-        draw_text_centered(r, "CHARGE / REGEN", right_cx, cy + 22, 2, bmw_green);
+        draw_text_centered(r, bbuf, right_cx, cy - 22, 3, bmw_green);
+        draw_text_centered(r, "CHARGE / REGEN", right_cx, cy + 20, 2, bmw_green);
     } else {
         snprintf(bbuf, sizeof(bbuf), "+%.0f kW", power_kw);
-        draw_text_centered(r, bbuf, right_cx, cy - 20, 3, eboost ? bmw_cyan : bmw_blue);
+        draw_text_centered(r, bbuf, right_cx, cy - 22, 3, eboost ? bmw_cyan : bmw_blue);
         snprintf(bbuf, sizeof(bbuf), "%.0f%% ePOWER", power_pct);
-        draw_text_centered(r, bbuf, right_cx, cy + 22, 2, text_wh);
+        draw_text_centered(r, bbuf, right_cx, cy + 20, 2, text_wh);
     }
 
     int batt_y = body_y + body_h - 48;
-    fill_rect(r, right_x + 30, batt_y, left_w - 60, 22, rgba(0, 0, 0, 255));
-    fill_rect(r, right_x + 30, batt_y, (int)((left_w - 60) * (batt_pct / 100.0f)), 22, bmw_blue);
-    draw_rect(r, right_x + 30, batt_y, left_w - 60, 22, 1, rgba(60, 90, 130, 255));
+    fill_rect(r, right_x + 30, batt_y, right_w - 60, 22, rgba(0, 0, 0, 255));
+    fill_rect(r, right_x + 30, batt_y, (int)((right_w - 60) * (batt_pct / 100.0f)), 22, bmw_blue);
+    draw_rect(r, right_x + 30, batt_y, right_w - 60, 22, 1, rgba(60, 90, 130, 255));
     snprintf(bbuf, sizeof(bbuf), "BATTERY %.0f%% (%.0f KM)", batt_pct, est_range);
     draw_text_centered(r, bbuf, right_cx, batt_y + 4, 2, text_wh);
 
     /* CENTER AREA: BMW i-Curved Navigation & Telemetry */
-    int center_x = left_x + left_w + 14;
-    int center_w = right_x - 14 - center_x;
+    int center_x = left_x + left_w + 12;
+    int center_w = right_x - 12 - center_x;
     draw_panel(r, center_x, body_y, center_w, body_h, rgba(0, 0, 0, 255), bmw_blue, 14);
 
-    draw_text(r, "BMW LIVE COCKPIT PROFESSIONAL", center_x + 20, body_y + 12, 2, bmw_cyan);
+    draw_text(r, "BMW LIVE COCKPIT M", center_x + 18, body_y + 12, 2, bmw_cyan);
     snprintf(bbuf, sizeof(bbuf), "DELTA %s%.3f", (state->delta_ms <= 0) ? "-" : "+", fabsf((float)state->delta_ms / 1000.0f));
-    draw_text_right(r, bbuf, center_x + center_w - 20, body_y + 12, 2, (state->delta_ms <= 0) ? bmw_green : bmw_red);
+    draw_text_right(r, bbuf, center_x + center_w - 18, body_y + 12, 2, (state->delta_ms <= 0) ? bmw_green : bmw_mred);
 
-    int map_pad = 16;
+    int map_pad = 14;
     int map_w = center_w - map_pad * 2;
     int map_h = body_h - 165;
     int map_x = center_x + map_pad;
@@ -1600,15 +1769,15 @@ static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud
 
     snprintf(bbuf, sizeof(bbuf), "G-FORCE: %.2f G   (LAT: %+.2f  LON: %+.2f)",
              sqrtf(state->g_lat * state->g_lat + state->g_lon * state->g_lon), state->g_lat, state->g_lon);
-    draw_text(r, bbuf, center_x + 26, bot_card_y + 12, 2, text_wh);
+    draw_text(r, bbuf, center_x + 24, bot_card_y + 12, 2, text_wh);
 
     snprintf(bbuf, sizeof(bbuf), "TIRES: FL %.0fC | FR %.0fC | RL %.0fC | RR %.0fC",
              state->tire_temp[0], state->tire_temp[1], state->tire_temp[2], state->tire_temp[3]);
-    draw_text(r, bbuf, center_x + 26, bot_card_y + 38, 2, bmw_cyan);
+    draw_text(r, bbuf, center_x + 24, bot_card_y + 38, 2, bmw_cyan);
 
     snprintf(bbuf, sizeof(bbuf), "DSC: ON  |  M eDRIVE: 100%%  |  LAP %d/%d",
              state->current_lap > 0 ? state->current_lap : 1, state->total_laps > 0 ? state->total_laps : 15);
-    draw_text(r, bbuf, center_x + 26, bot_card_y + 64, 2, text_dim);
+    draw_text(r, bbuf, center_x + 24, bot_card_y + 64, 2, text_dim);
 }
 
 /* 3. AUDI VIRTUAL COCKPIT PLUS e-tron GT */
@@ -1621,7 +1790,7 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     rgba_t text_wh    = rgba(245, 250, 255, 255);
 
     float speed = ui->use_mph ? state->speed_mph : state->speed_kmh;
-    float max_spd = ui->use_mph ? 200.0f : 320.0f;
+    float max_spd = ui->use_mph ? 200.0f : 300.0f;
     float spd_frac = speed / max_spd;
     if (spd_frac > 1.0f) spd_frac = 1.0f;
 
@@ -1630,75 +1799,132 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     float power_kw = power_pct * 4.4f;
     float regen_kw = charge_pct * 2.2f;
 
-    int body_y = content_y + 8;
-    int body_h = content_h - 16;
-    int cy = body_y + body_h / 2 + 10;
-    int dial_rad = (body_h > 580) ? 142 : 128;
+    int cy = content_y + content_h / 2 + 4;
+    /* Massive dial diameter approaching screen content height (diameter = 472px!) */
+    int dial_rad = (content_h > 580) ? 236 : 225;
 
-    /* LEFT DIAL: Audi Virtual Cockpit Speedometer */
-    int left_cx = 210;
+    /* LEFT DIAL: Audi RS Massive Virtual Cockpit Speedometer */
+    int left_cx = 242;
     fill_circle(r, left_cx, cy, dial_rad, rgba(0, 0, 0, 255));
-    draw_circle(r, left_cx, cy, dial_rad, 2, rgba(45, 55, 75, 255));
-    draw_segmented_arc(r, left_cx, cy, dial_rad - 6, 8, 140.0f, 400.0f, 28, spd_frac, audi_red, rgba(0, 0, 0, 0));
+    draw_circle(r, left_cx, cy, dial_rad, 2, rgba(40, 50, 68, 255));
+    draw_circle(r, left_cx, cy, dial_rad - 4, 1, audi_red);
+    draw_circle(r, left_cx, cy, dial_rad - 22, 1, rgba(22, 32, 46, 255));
 
+    /* Audi RS dual graduation ticks every 10 km/h */
+    draw_radial_dial_ticks(r, left_cx, cy, dial_rad - 18, dial_rad - 6, 140.0f, 400.0f, 31, 3, audi_red, rgba(60, 75, 100, 255));
+    draw_segmented_arc(r, left_cx, cy, dial_rad - 6, 8, 140.0f, 400.0f, 30, spd_frac, audi_red, rgba(0, 0, 0, 0));
+
+    /* Numbers around dial: 0, 60, 120, 180, 240, 300 */
+    static const int audi_labels[6] = {0, 60, 120, 180, 240, 300};
+    for (int i = 0; i < 6; ++i) {
+        float deg = 140.0f + (float)i * 52.0f;
+        float rad = deg * 3.14159265f / 180.0f;
+        int tx = left_cx + (int)((dial_rad - 34) * cosf(rad));
+        int ty = cy + (int)((dial_rad - 34) * sinf(rad));
+        char lbuf[8];
+        snprintf(lbuf, sizeof(lbuf), "%d", audi_labels[i]);
+        draw_text_centered(r, lbuf, tx, ty - 6, 1, text_wh);
+    }
+
+    /* Dynamic Audi RS Sport Needle (drawn first) */
+    float a_needle_deg = 140.0f + spd_frac * 260.0f;
+    draw_dial_needle(r, left_cx, cy, a_needle_deg, dial_rad - 24, 6, audi_red);
+
+    /* Center Digital Speed Readout with solid backing */
+    fill_rect(r, left_cx - 72, cy - 42, 144, 84, rgba(0, 0, 0, 245));
     int ispd = (int)roundf(speed);
-    draw_7seg_number_centered(r, ispd, 3, false, left_cx, cy - 36, 42, 64, 8, 7, text_wh, rgba(0, 0, 0, 0));
-    draw_text_centered(r, ui->use_mph ? "MPH" : "KM/H", left_cx, cy + 34, 2, audi_red);
+    draw_7seg_number_centered(r, ispd, 3, false, left_cx, cy - 38, 48, 74, 9, 8, text_wh, rgba(0, 0, 0, 0));
+    draw_text_centered(r, ui->use_mph ? "MPH" : "KM/H", left_cx, cy + 44, 2, audi_red);
 
-    draw_text_centered(r, "RS e-tron GT", left_cx, cy - dial_rad + 20, 2, text_wh);
-    draw_text_centered(r, "DYNAMIC", left_cx, cy + dial_rad - 30, 2, text_dim);
+    fill_rect(r, left_cx - 60, cy - 74, 120, 22, rgba(0, 0, 0, 245));
+    draw_rect(r, left_cx - 60, cy - 74, 120, 22, 1, audi_red);
+    draw_text_centered(r, "RS e-tron GT", left_cx, cy - 69, 2, text_wh);
+    draw_text_centered(r, "RS DYNAMIC", left_cx, cy + dial_rad - 46, 2, text_dim);
 
-    /* RIGHT DIAL: Audi e-tron Power Meter */
-    int right_cx = SCREEN_W - 210;
+    /* RIGHT DIAL: Audi RS Power & Boost Meter */
+    int right_cx = SCREEN_W - 242;
     fill_circle(r, right_cx, cy, dial_rad, rgba(0, 0, 0, 255));
-    draw_circle(r, right_cx, cy, dial_rad, 2, rgba(45, 55, 75, 255));
-    draw_segmented_arc(r, right_cx, cy, dial_rad - 6, 8, 180.0f, 360.0f, 20, power_pct / 100.0f, audi_cyan, rgba(0, 0, 0, 0));
-    draw_segmented_arc(r, right_cx, cy, dial_rad - 6, 8, 180.0f, 100.0f, 12, charge_pct / 100.0f, audi_green, rgba(0, 0, 0, 0));
+    draw_circle(r, right_cx, cy, dial_rad, 2, rgba(40, 50, 68, 255));
+    draw_circle(r, right_cx, cy, dial_rad - 4, 1, audi_cyan);
+    draw_circle(r, right_cx, cy, dial_rad - 22, 1, rgba(22, 32, 46, 255));
+
+    draw_radial_dial_ticks(r, right_cx, cy, dial_rad - 18, dial_rad - 6, 180.0f, 360.0f, 19, 3, audi_red, rgba(60, 75, 100, 255));
+    draw_radial_dial_ticks(r, right_cx, cy, dial_rad - 18, dial_rad - 6, 90.0f, 180.0f, 10, 3, audi_green, rgba(25, 60, 45, 255));
+    draw_segmented_arc(r, right_cx, cy, dial_rad - 6, 8, 180.0f, 360.0f, 20, power_pct / 100.0f, audi_red, rgba(0, 0, 0, 0));
+    draw_segmented_arc(r, right_cx, cy, dial_rad - 6, 8, 180.0f, 90.0f, 12, charge_pct / 100.0f, audi_green, rgba(0, 0, 0, 0));
+
+    /* Dynamic Power / Charge Needle (drawn first) */
+    float pwr_needle = 180.0f;
+    if (charge_pct > 2.0f) {
+        pwr_needle = 180.0f - (charge_pct / 100.0f) * 90.0f;
+        draw_dial_needle(r, right_cx, cy, pwr_needle, dial_rad - 24, 6, audi_green);
+    } else {
+        pwr_needle = 180.0f + (power_pct / 100.0f) * 180.0f;
+        draw_dial_needle(r, right_cx, cy, pwr_needle, dial_rad - 24, 6, audi_cyan);
+    }
+
+    /* Central Solid Readout Badge */
+    fill_rect(r, right_cx - 76, cy - 36, 152, 68, rgba(0, 0, 0, 245));
+    draw_rect(r, right_cx - 76, cy - 36, 152, 68, 1, rgba(30, 40, 56, 255));
 
     char abuf[128];
     if (charge_pct > 3.0f) {
         snprintf(abuf, sizeof(abuf), "-%.0f kW", regen_kw);
-        draw_text_centered(r, abuf, right_cx, cy - 20, 3, audi_green);
-        draw_text_centered(r, "CHARGE", right_cx, cy + 18, 2, audi_green);
+        draw_text_centered(r, abuf, right_cx, cy - 26, 3, audi_green);
+        draw_text_centered(r, "CHARGE", right_cx, cy + 10, 2, audi_green);
     } else {
         snprintf(abuf, sizeof(abuf), "+%.0f kW", power_kw);
-        draw_text_centered(r, abuf, right_cx, cy - 20, 3, audi_cyan);
-        draw_text_centered(r, (power_pct > 90.0f) ? "RS BOOST" : "POWER %", right_cx, cy + 18, 2, audi_red);
+        draw_text_centered(r, abuf, right_cx, cy - 26, 3, audi_cyan);
+        draw_text_centered(r, (power_pct > 90.0f) ? "RS BOOST" : "POWER %", right_cx, cy + 10, 2, audi_red);
     }
+
+    int a_batt_y = cy + dial_rad - 46;
+    fill_rect(r, right_cx - 65, a_batt_y, 130, 18, rgba(0, 0, 0, 255));
+    fill_rect(r, right_cx - 65, a_batt_y, (int)(1.3f * state->fuel_pct), 18, audi_red);
+    draw_rect(r, right_cx - 65, a_batt_y, 130, 18, 1, rgba(65, 80, 105, 255));
     snprintf(abuf, sizeof(abuf), "BATTERY %.0f%%", state->fuel_pct);
-    draw_text_centered(r, abuf, right_cx, cy + dial_rad - 30, 2, text_wh);
+    draw_text_centered(r, abuf, right_cx, a_batt_y + 3, 2, text_wh);
 
-    /* CENTER AREA: Audi MMI Virtual Cockpit Navigation */
-    int center_x = left_cx + dial_rad + 18;
-    int center_w = (right_cx - dial_rad - 18) - center_x;
-    draw_panel(r, center_x, body_y, center_w, body_h, rgba(0, 0, 0, 255), audi_red, 14);
+    /* CENTER AREA: Audi MMI Virtual Cockpit Navigation & Sectors */
+    int center_x = left_cx + dial_rad + 12;
+    int center_w = (right_cx - dial_rad - 12) - center_x;
+    int center_y = content_y + 6;
+    int center_h = content_h - 12;
 
-    draw_text(r, "AUDI VIRTUAL COCKPIT PLUS", center_x + 18, body_y + 12, 2, text_wh);
+    draw_panel(r, center_x, center_y, center_w, center_h, rgba(0, 0, 0, 255), audi_red, 14);
+
+    draw_text_centered(r, "AUDI SPORT MMI", center_x + center_w / 2, center_y + 10, 2, audi_red);
     snprintf(abuf, sizeof(abuf), "DELTA %s%.3f", (state->delta_ms <= 0) ? "-" : "+", fabsf((float)state->delta_ms / 1000.0f));
-    draw_text_right(r, abuf, center_x + center_w - 18, body_y + 12, 2, (state->delta_ms <= 0) ? audi_green : audi_red);
+    draw_text_centered(r, abuf, center_x + center_w / 2, center_y + 32, 2, (state->delta_ms <= 0) ? audi_green : audi_red);
 
-    int map_pad = 16;
+    int map_pad = 12;
     int map_w = center_w - map_pad * 2;
-    int map_h = body_h - 165;
+    int map_h = center_h - 165;
     int map_x = center_x + map_pad;
-    int map_y = body_y + 36;
+    int map_y = center_y + 54;
     fill_rect(r, map_x, map_y, map_w, map_h, rgba(0, 0, 0, 255));
     draw_rect(r, map_x, map_y, map_w, map_h, 1, rgba(40, 50, 70, 255));
     draw_track_map_geometry(r, state, map_x + 6, map_y + 6, map_w - 12, map_h - 12, 4, 2, false);
 
-    int bot_y = map_y + map_h + 10;
-    draw_panel(r, center_x + 14, bot_y, center_w - 28, 96, rgba(0, 0, 0, 255), rgba(50, 65, 88, 255), 8);
+    /* Unified Bottom Sector Card with zero overflow */
+    int bot_y = map_y + map_h + 8;
+    int bot_h = center_h - (bot_y - center_y) - 8;
+    draw_panel(r, center_x + 10, bot_y, center_w - 20, bot_h, rgba(0, 0, 0, 255), rgba(50, 65, 88, 255), 8);
 
     char s1_s[16], s2_s[16], s3_s[16];
     format_sector_time(state->cur_sector_ms[0], s1_s, sizeof(s1_s));
     format_sector_time(state->cur_sector_ms[1], s2_s, sizeof(s2_s));
     format_sector_time(state->cur_sector_ms[2], s3_s, sizeof(s3_s));
-    snprintf(abuf, sizeof(abuf), "SECTORS: S1 %s  |  S2 %s  |  S3 %s", s1_s, s2_s, s3_s);
-    draw_text(r, abuf, center_x + 26, bot_y + 16, 2, text_wh);
 
-    snprintf(abuf, sizeof(abuf), "RS e-tron GT  |  EFFICIENCY: 20.8 kWh/100km  |  G-LOAD: %.2f",
+    snprintf(abuf, sizeof(abuf), "S1 %s  S2 %s", s1_s, s2_s);
+    draw_text_centered(r, abuf, center_x + center_w / 2, bot_y + 10, 2, text_wh);
+
+    snprintf(abuf, sizeof(abuf), "S3 %s  RS QUATTRO", s3_s);
+    draw_text_centered(r, abuf, center_x + center_w / 2, bot_y + 34, 2, audi_cyan);
+
+    snprintf(abuf, sizeof(abuf), "EFF 20.8kWh | G %.2f",
              sqrtf(state->g_lat * state->g_lat + state->g_lon * state->g_lon));
-    draw_text(r, abuf, center_x + 26, bot_y + 44, 2, text_dim);
+    draw_text_centered(r, abuf, center_x + center_w / 2, bot_y + 58, 2, text_dim);
 }
 
 /* 4. VOLVO EX90 / POLESTAR SCANDINAVIAN EV COCKPIT */

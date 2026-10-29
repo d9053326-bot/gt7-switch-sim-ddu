@@ -103,26 +103,5 @@ gh release create "v1.10.29.0950" dist/switch/gt7_hud/gt7_switch_hud.nro \
     - \`- B +\` Rekuperationsanzeige leuchtet beim Bremsen grün auf.
     - Vektorgezeichnete Icons für Batterie \`[BAT] ── <km>\` und Kraftstoff \`[GAS] ── <km>\`.
 - **Nintendo Switch ARMv8 Binary**: \`gt7_switch_hud.nro\` einsatzbereit für Atmosphère Homebrew."
-    - BMWの時速数値をx=350へ配置（シェブロン枠との干渉を完全排除）。重複していたADAPTIVEピルを解消。
-    - Audi RSランウェイの斜め目盛り数値を20px外側にオフセット。
-    - Volvoのスピードメーター弧を再計算し、200から0までの全8目盛数値が画面左端（x=29〜123）に100%完全に収まるよう修正。
-    - JDM Defiメーターの針軸と中央ギア数字の重なりを解消。
-  - **画面境界の安全性確保**:
-    - Mercedes-BenzのPRNDおよび[ C ]をメーター外側右下へ配置し、円周線との交差を解消。
-- **Switch用 NRO バイナリ同梱**: Atmosphère環境で即起動可能。
-
----
-
-### 🇩🇪 Deutsch
-- **Staffelung von Zahlen & Zeigern sowie Behebung von Textüberläufen (v1.10.29.0839)**:
-  - **Keine Zeigerkollisionen & saubere Trennung**:
-    - Mercedes-Benz Skalenzahlen auf 184px Innenradius verlegt; Nadeln unter den Zahlen gerendert für perfekte Lesbarkeit bei Zeigerdurchgang.
-    - BMW Geschwindigkeit auf x=350 zentriert mit 18px+ Abstand zum Chevron; doppelte ADAPTIVE-Box entfernt.
-    - Audi RS Runway Zahlen mit 20px Sicherheitsabstand zur Diagonale angeordnet.
-    - Volvo Tacho-Geometrie neuberechnet; alle 8 Zahlen (200 bis 0) liegen sauber innerhalb des Bildschirms (x=29~123).
-    - JDM Defi Nadelachse kollidiert nicht mehr mit der Ganganzeige.
-  - **Sichere Bildschirrgrenzen**:
-    - Mercedes-Benz PRND und [ C ]-Modus in die untere rechte Ecke außerhalb der Rundinstrumente verlegt.
-- **Vorkompilierte Switch-Binärdatei**: \`gt7_switch_hud.nro\` für Atmosphère CFW enthalten."
 
 echo "=== 發布完成！ ==="

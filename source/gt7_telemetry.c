@@ -989,6 +989,13 @@ void gt7_update_demo(gt7_state_t *state, uint32_t now_ms, int theme_index) {
         state->powertrain_flags  = 0x03; /* AWD Dual Motor Configuration */
         state->energy_recovery_avail = true;
         state->engine_torque_norm = (throttle > 5.0f) ? (throttle / 100.0f) : (brake > 5.0f ? -brake / 100.0f : 0.0f);
+        strncpy(state->car_category, "EV", sizeof(state->car_category));
+        state->surface_type[0] = (cycle >= 12.2f && cycle <= 14.0f) ? 'C' : 'T';
+        state->surface_type[1] = 'T';
+        state->surface_type[2] = (cycle >= 12.2f && cycle <= 14.0f) ? 'C' : 'T';
+        state->surface_type[3] = 'T';
+        state->steer_angle_fl_deg = state->g_lat * 11.5f;
+        state->steer_angle_fr_deg = state->g_lat * 11.1f;
 
         if (brake > 5.0f) {
             /* Active Regenerative Braking up to -285 kW */

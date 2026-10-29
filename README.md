@@ -1,5 +1,5 @@
 # GT7 Switch Sim-DDU Pro (Nintendo Switch Sim Racing & EV Cockpit DDU)
-**Version / 版本號: `_aw_1.10.29.0746`**
+**Version / 版本號: `_aw_1.10.29.0820`**
 
 <p align="center">
   <b>🌐 Language Navigation / 語言切換 / 言語切替 / Sprachauswahl:</b><br><br>
@@ -113,6 +113,6 @@ Ein natives Homebrew Sim-Racing Dashboard Display Unit (`.nro`) speziell für di
 
 ## 📦 Download & Release (`gt7_switch_hud.nro`)
 
-- 🌐 **GitHub Releases**: [Download v1.10.29.0746](https://github.com/d9053326-bot/gt7-switch-sim-ddu/releases/tag/v1.10.29.0746)
-- 📦 **Direct .NRO Binary**: [gt7_switch_hud.nro (6.52 MB)](https://github.com/d9053326-bot/gt7-switch-sim-ddu/releases/download/v1.10.29.0746/gt7_switch_hud.nro)
+- 🌐 **GitHub Releases**: [Download v1.10.29.0820](https://github.com/d9053326-bot/gt7-switch-sim-ddu/releases/tag/v1.10.29.0820)
+- 📦 **Direct .NRO Binary**: [gt7_switch_hud.nro (6.52 MB)](https://github.com/d9053326-bot/gt7-switch-sim-ddu/releases/download/v1.10.29.0820/gt7_switch_hud.nro)
 - 📂 **Install Path on SD Card**: `/switch/gt7_hud/gt7_switch_hud.nro`

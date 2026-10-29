@@ -1,5 +1,5 @@
 # GT7 Switch Sim-DDU Pro (Nintendo Switch Sim Racing & EV Cockpit DDU)
-**Version / 版本號: `_aw_1.10.29.0839`**
+**Version / 版本號: `_aw_1.10.29.0950`**
 
 <p align="center">
   <b>🌐 Language Navigation / 語言切換 / 言語切替 / Sprachauswahl:</b><br><br>

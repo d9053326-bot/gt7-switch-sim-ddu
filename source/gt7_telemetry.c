@@ -590,7 +590,7 @@ void gt7_update_demo(gt7_state_t *state, uint32_t now_ms, int theme_index) {
     } else if (theme_index == 2) { /* Modern Luxury EV Digital Cockpit */
         max_rpm = 16000.0f;
         warn_rpm = 14500.0f;
-        max_gear = 2; /* 2-speed transmission / direct drive */
+        max_gear = 6; /* Multi-speed transmission for luxury EV/hybrid GT7 telemetry */
         top_speed = 310.0f;
     } else if (theme_index == 3) { /* F1 W14 / Super Formula */
         max_rpm = 13500.0f;

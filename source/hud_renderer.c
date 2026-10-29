@@ -1483,9 +1483,12 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     }
     draw_text_centered(r, ui->use_mph ? "mph" : "km/h", left_cx, cy - 80, 2, text_dim);
 
-    /* Fuel Gauge at bottom of left dial */
+    /* Dynamic Fuel Gauge at bottom of left dial */
     int fuel_y = cy + dial_rad - 54;
-    draw_text(r, "⛽ 186 mi", left_cx - 40, fuel_y - 10, 1, text_wh);
+    int cur_range = (int)(state->fuel_pct * (ui->use_mph ? 3.8f : 6.1f));
+    char f_lbl[24];
+    snprintf(f_lbl, sizeof(f_lbl), "%d %s", cur_range, ui->use_mph ? "mi" : "km");
+    draw_text_centered(r, f_lbl, left_cx, fuel_y - 10, 1, text_wh);
     draw_text(r, "0", left_cx - 48, fuel_y + 8, 1, text_dim);
     draw_text(r, "1/2", left_cx - 8, fuel_y + 14, 1, text_dim);
     draw_text(r, "1", left_cx + 36, fuel_y + 8, 1, text_dim);
@@ -1524,16 +1527,35 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     draw_text(r, "POWER", right_cx - 48, pwr_lbl_y, 1, text_wh);
     draw_text(r, "CHARGE", right_cx + 12, pwr_lbl_y, 1, mb_cyan);
 
-    /* Vertical Gear Column & Comfort Mode Pill at lower right corner (completely OUTSIDE the dial, 0 collision) */
+    /* Dynamic Vertical Gear Selector Column & Driving Mode Pill (completely OUTSIDE dial) */
     int gr_x = 1206;
     int gr_y = content_y + content_h - 48;
-    draw_text(r, "R", gr_x, gr_y - 24, 1, text_dim);
-    draw_text(r, "N", gr_x, gr_y - 12, 1, text_dim);
-    draw_text(r, "D", gr_x, gr_y,      1, text_dim);
-    draw_text(r, (state->current_gear <= 0) ? "P" : "D", gr_x + 18, gr_y - 18, 3, text_wh);
-    fill_rect(r, gr_x + 14, gr_y + 10, 28, 18, rgba(0, 45, 80, 255));
-    draw_rect(r, gr_x + 14, gr_y + 10, 28, 18, 1, mb_cyan);
-    draw_text_centered(r, "C", gr_x + 28, gr_y + 12, 1, mb_cyan);
+    bool is_p = (state->speed_kmh < 1.0f && state->current_gear <= 0);
+    bool is_r = (state->current_gear == 0);
+    bool is_n = (state->current_gear == -1);
+    bool is_d = (state->current_gear >= 1);
+
+    draw_text(r, "R", gr_x, gr_y - 24, 1, is_r ? rgba(255, 195, 45, 255) : text_dim);
+    draw_text(r, "N", gr_x, gr_y - 12, 1, is_n ? text_wh : text_dim);
+    draw_text(r, "D", gr_x, gr_y,      1, is_d ? text_wh : text_dim);
+
+    char gr_buf[8];
+    if (is_p) {
+        snprintf(gr_buf, sizeof(gr_buf), "P");
+    } else if (is_r) {
+        snprintf(gr_buf, sizeof(gr_buf), "R");
+    } else if (is_n) {
+        snprintf(gr_buf, sizeof(gr_buf), "N");
+    } else {
+        snprintf(gr_buf, sizeof(gr_buf), "D%d", state->current_gear);
+    }
+    draw_text(r, gr_buf, gr_x + 14, gr_y - 18, 3, is_r ? rgba(255, 195, 45, 255) : text_wh);
+
+    /* Dynamic Drive Mode Pill: [ S ] when throttle > 75%, otherwise [ C ] */
+    bool is_sport = (state->throttle_pct > 75.0f);
+    fill_rect(r, gr_x + 14, gr_y + 10, 28, 18, is_sport ? rgba(90, 15, 25, 255) : rgba(0, 45, 80, 255));
+    draw_rect(r, gr_x + 14, gr_y + 10, 28, 18, 1, is_sport ? mb_red : mb_cyan);
+    draw_text_centered(r, is_sport ? "S" : "C", gr_x + 28, gr_y + 12, 1, is_sport ? mb_red : mb_cyan);
 
     /* ================= CENTER TOP: Speed Limit, ADAS, Digital Speed ================= */
     int mid_cx = SCREEN_W / 2;
@@ -1569,31 +1591,44 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     draw_text_centered(r, "ENTIRE", mid_cx, card_y + 8, 1, text_dim);
 
     char c_buf[32];
-    /* Row 1 */
-    snprintf(c_buf, sizeof(c_buf), "%.1f mpg", 26.7f);
+    /* Row 1: Real-time Fuel Level & Current/Top Speed */
+    snprintf(c_buf, sizeof(c_buf), "%.1f L", (state->fuel_level > 0.0f) ? state->fuel_level : (state->fuel_pct * 0.65f));
     draw_text(r, c_buf, card_x + 18, card_y + 28, 2, text_wh);
-    snprintf(c_buf, sizeof(c_buf), "%.0f mph", 52.0f);
+    snprintf(c_buf, sizeof(c_buf), "%.0f %s", speed, ui->use_mph ? "mph" : "km/h");
     draw_text(r, c_buf, card_x + 150, card_y + 28, 2, text_wh);
 
-    /* Row 2 */
-    snprintf(c_buf, sizeof(c_buf), "%.0f mi", 540.0f);
+    /* Row 2: Live Trip Distance & Lap Timer */
+    float trip_dist = (float)state->current_lap * (ui->use_mph ? 2.6f : 4.2f) + ((float)state->current_lap_ms / 60000.0f) * (speed * 0.012f);
+    snprintf(c_buf, sizeof(c_buf), "%.1f %s", trip_dist, ui->use_mph ? "mi" : "km");
     draw_text(r, c_buf, card_x + 18, card_y + 62, 2, text_wh);
-    draw_text(r, "10:18 h", card_x + 150, card_y + 62, 2, text_wh);
+    int lap_sec = (state->current_lap_ms > 0) ? (int)(state->current_lap_ms / 1000) : (int)((now_ms / 1000) % 3600);
+    snprintf(c_buf, sizeof(c_buf), "%02d:%02d", lap_sec / 60, lap_sec % 60);
+    draw_text(r, c_buf, card_x + 150, card_y + 62, 2, text_wh);
 
-    /* Row 3 (Eco leaf) */
-    draw_text(r, "🌿 9 mi", card_x + 18, card_y + 96, 2, mb_cyan);
-    draw_text(r, "56 min", card_x + 150, card_y + 96, 2, text_wh);
+    /* Row 3: Remaining Dynamic Range & Race Position */
+    int rem_range = (int)(state->fuel_pct * (ui->use_mph ? 3.8f : 6.1f));
+    snprintf(c_buf, sizeof(c_buf), "%d %s", rem_range, ui->use_mph ? "mi" : "km");
+    draw_text(r, c_buf, card_x + 18, card_y + 96, 2, mb_cyan);
+    snprintf(c_buf, sizeof(c_buf), "POS %d/%d", (state->race_position > 0) ? state->race_position : 1, (state->total_cars > 0) ? state->total_cars : 16);
+    draw_text(r, c_buf, card_x + 150, card_y + 96, 2, text_wh);
 
-    /* ================= CENTER BOTTOM: Seat Occupancy, PARK, Clock ================= */
+    /* ================= CENTER BOTTOM: Seat Occupancy, Dynamic Driving Status ================= */
     int bot_card_y = card_y + card_h + 36;
     draw_panel(r, mid_cx - 95, bot_card_y, 190, 32, rgba(6, 14, 26, 230), rgba(25, 50, 85, 255), 8);
-    draw_text_centered(r, "💺 💺   [x] 💺 💺", mid_cx, bot_card_y + 7, 2, text_dim);
+    draw_text_centered(r, "[o] [o]   [x]   [o] [o]", mid_cx, bot_card_y + 8, 2, text_dim);
 
     int status_y = content_y + content_h - 22;
     draw_text(r, "01:58 pm", 355, status_y, 2, text_dim);
-    draw_text(r, "PARK", 525, status_y, 2, mb_red);
-    fill_rect(r, 625, status_y - 2, 22, 20, mb_blue);
-    draw_text_centered(r, "P", 636, status_y, 2, text_wh);
+    if (is_p) {
+        draw_text(r, "PARK", 525, status_y, 2, mb_red);
+        fill_rect(r, 625, status_y - 2, 22, 20, mb_blue);
+        draw_text_centered(r, "P", 636, status_y, 2, text_wh);
+    } else {
+        draw_text(r, "READY", 520, status_y, 2, mb_green);
+        char lap_buf[16];
+        snprintf(lap_buf, sizeof(lap_buf), "LAP %d", (state->current_lap > 0) ? state->current_lap : 1);
+        draw_text(r, lap_buf, 620, status_y, 2, text_wh);
+    }
     draw_text(r, "❄ 24°F", 715, status_y, 2, text_dim);
 }
 
@@ -1688,7 +1723,7 @@ static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud
 
     /* Top chevron cap bar & "km/h" label */
     draw_thick_line(r, l_in_top_x, l_in_top_y, l_top_x, l_top_y, 3, text_wh);
-    draw_text_centered(r, ui->use_mph ? "mph" : "km/h", (l_in_top_x + l_top_x) / 2, l_top_y + 12, 2, text_wh);
+    draw_text_centered(r, ui->use_mph ? "mph" : "km/h", (l_in_top_x + l_top_x) / 2, l_top_y - 26, 2, text_wh);
 
     /* Graduation marks: 0, 30, 60, 90, 120 */
     draw_thick_line(r, l_bot_x - 12, l_bot_y, l_bot_x + 4, l_bot_y, 3, bmw_cyan);
@@ -1704,7 +1739,7 @@ static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud
     draw_text_right(r, "90", l_v_top_x - 16, l_v_top_y - 6, 2, text_wh);
 
     draw_thick_line(r, l_top_x - 12, l_top_y, l_top_x + 4, l_top_y, 3, bmw_cyan);
-    draw_text_right(r, "120", l_top_x - 16, l_top_y - 6, 2, text_wh);
+    draw_text_right(r, "120", l_top_x - 16, l_top_y + 16, 2, text_wh);
 
     /* Dynamic illuminated speed ribbon along left chevron */
     if (spd_frac > 0.02f) {
@@ -1734,7 +1769,7 @@ static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud
     draw_text_centered(r, ui->use_mph ? "mph" : "km/h", 350, cy + 34, 2, text_wh);
 
     /* Left Green Headlight Indicator Icon */
-    draw_text(r, "D", 70, cy + 40, 3, bmw_green);
+    draw_text(r, "=D", 50, cy + 30, 2, bmw_green);
 
     /* ================= RIGHT CHEVRON: POWER & ADAPTIVE BRACKET (>) ================= */
     /* Outer Symmetrical Chevron Coordinates */
@@ -1774,7 +1809,7 @@ static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud
 
     /* Top chevron cap bar & "Power %" label */
     draw_thick_line(r, r_top_x, l_top_y, r_in_top_x, l_in_top_y, 3, text_wh);
-    draw_text_centered(r, "Power %", (r_top_x + r_in_top_x) / 2, l_top_y + 12, 2, text_wh);
+    draw_text_centered(r, "Power %", (r_top_x + r_in_top_x) / 2, l_top_y - 26, 2, text_wh);
 
     /* Graduation marks: READY 0, 25, 50, 100 */
     draw_thick_line(r, r_bot_x - 4, l_bot_y, r_bot_x + 12, l_bot_y, 3, bmw_cyan);
@@ -1787,7 +1822,7 @@ static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud
     draw_text(r, "50", r_v_top_x + 16, l_v_top_y - 6, 2, text_wh);
 
     draw_thick_line(r, r_top_x - 4, l_top_y, r_top_x + 12, l_top_y, 3, bmw_cyan);
-    draw_text(r, "100", r_top_x + 16, l_top_y - 6, 2, text_wh);
+    draw_text(r, "100", r_top_x + 16, l_top_y + 16, 2, text_wh);
 
     /* Dynamic illuminated power ribbon along right chevron */
     if (pwr_frac > 0.02f) {
@@ -1811,29 +1846,60 @@ static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud
         }
     }
 
-    /* Huge Gear Indicator nestled cleanly in the crook of the right chevron */
-    const char *gear_str = "P";
-    if (state->current_gear == 0) gear_str = "R";
-    else if (state->current_gear == 1) gear_str = "1";
-    else if (state->current_gear > 1) {
-        static char g_tmp[4];
-        snprintf(g_tmp, sizeof(g_tmp), "%d", state->current_gear);
-        gear_str = g_tmp;
-    }
-    draw_text_centered(r, gear_str, SCREEN_W - 350, cy - 25, 5, text_wh);
+    /* Dynamic Gear Indicator nestled cleanly in the crook of the right chevron */
+    char bmw_gear[8];
+    bool is_p = (state->speed_kmh < 1.0f && state->current_gear <= 0);
+    bool is_r = (state->current_gear == 0);
+    bool is_n = (state->current_gear == -1);
+    bool is_sport = (state->throttle_pct > 75.0f);
 
-    /* Lower inner tab: ADAPTIVE mode pill */
-    fill_rect(r, SCREEN_W - 390, l_bot_y - 48, 86, 24, rgba(0, 48, 90, 240));
-    draw_rect(r, SCREEN_W - 390, l_bot_y - 48, 86, 24, 1, bmw_cyan);
-    draw_text_centered(r, "ADAPTIVE", SCREEN_W - 347, l_bot_y - 43, 1, bmw_cyan);
+    if (is_p) {
+        snprintf(bmw_gear, sizeof(bmw_gear), "P");
+    } else if (is_r) {
+        snprintf(bmw_gear, sizeof(bmw_gear), "R");
+    } else if (is_n) {
+        snprintf(bmw_gear, sizeof(bmw_gear), "N");
+    } else {
+        snprintf(bmw_gear, sizeof(bmw_gear), "%s%d", is_sport ? "S" : "D", state->current_gear);
+    }
+    draw_text_centered(r, bmw_gear, SCREEN_W - 350, cy - 25, 5, is_r ? rgba(255, 195, 45, 255) : (is_sport ? rgba(255, 60, 60, 255) : text_wh));
+
+    /* Dynamic Lower inner tab: ADAPTIVE / SPORT / REGEN / PARK mode pill */
+    const char *mode_name = "ADAPTIVE";
+    rgba_t mode_color = bmw_cyan;
+    rgba_t mode_bg = rgba(0, 48, 90, 240);
+
+    if (charge_pct > 5.0f) {
+        mode_name = "REGEN";
+        mode_color = bmw_green;
+        mode_bg = rgba(0, 60, 40, 240);
+    } else if (is_sport) {
+        mode_name = "SPORT";
+        mode_color = rgba(255, 60, 60, 255);
+        mode_bg = rgba(90, 15, 25, 240);
+    } else if (is_p) {
+        mode_name = "PARK";
+        mode_color = text_dim;
+        mode_bg = rgba(25, 35, 50, 240);
+    }
+
+    fill_rect(r, SCREEN_W - 390, l_bot_y - 48, 86, 24, mode_bg);
+    draw_rect(r, SCREEN_W - 390, l_bot_y - 48, 86, 24, 1, mode_color);
+    draw_text_centered(r, mode_name, SCREEN_W - 347, l_bot_y - 43, 1, mode_color);
 
     /* ================= BOTTOM STATUS ROW ================= */
     int b_row_y = content_y + content_h - 32;
 
-    /* Left: Fuel range 698 km and bar */
-    draw_text(r, "⛽ 698 km", 130, b_row_y - 12, 2, text_wh);
+    /* Left: Dynamic Fuel / Energy range and bar */
+    int fuel_range = (int)(state->fuel_pct * (ui->use_mph ? 4.3f : 7.0f));
+    char bmw_f_buf[24];
+    snprintf(bmw_f_buf, sizeof(bmw_f_buf), "⛽ %d %s", fuel_range, ui->use_mph ? "mi" : "km");
+    draw_text(r, bmw_f_buf, 130, b_row_y - 12, 2, text_wh);
     fill_rect(r, 130, b_row_y + 8, 120, 6, rgba(30, 45, 65, 255));
-    fill_rect(r, 130, b_row_y + 8, 95, 6, text_wh);
+    int bmw_f_bar = (int)((state->fuel_pct / 100.0f) * 120.0f);
+    if (bmw_f_bar > 120) bmw_f_bar = 120;
+    if (bmw_f_bar < 0) bmw_f_bar = 0;
+    fill_rect(r, 130, b_row_y + 8, bmw_f_bar, 6, (state->fuel_pct < 15.0f) ? rgba(255, 180, 0, 255) : text_wh);
     draw_text(r, "0", 118, b_row_y + 5, 1, text_dim);
     draw_text(r, "1", 255, b_row_y + 5, 1, text_dim);
 
@@ -1848,13 +1914,21 @@ static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud
     draw_rect(r, 620, b_row_y - 10, 46, 24, 1, rgba(40, 70, 110, 255));
     draw_text_centered(r, "🚗", 643, b_row_y - 6, 1, text_wh);
 
-    /* Outside Temperature: +19.0 °C */
-    draw_text(r, "+ 19.0 °C", 930, b_row_y - 2, 2, text_wh);
+    /* Outside Temperature */
+    char temp_buf[24];
+    snprintf(temp_buf, sizeof(temp_buf), "%s", ui->use_mph ? "+ 66 °F" : "+ 19.0 °C");
+    draw_text(r, temp_buf, 930, b_row_y - 2, 2, text_wh);
 
-    /* Right: Electric battery 55 km and bar */
-    draw_text(r, "⚡ 55 km", 1080, b_row_y - 12, 2, text_wh);
+    /* Right: Dynamic High-Voltage Electric battery range and bar */
+    int batt_range = (int)((state->fuel_pct > 0.0f ? state->fuel_pct : 80.0f) * (ui->use_mph ? 0.35f : 0.55f));
+    char bmw_b_buf[24];
+    snprintf(bmw_b_buf, sizeof(bmw_b_buf), "⚡ %d %s", batt_range, ui->use_mph ? "mi" : "km");
+    draw_text(r, bmw_b_buf, 1080, b_row_y - 12, 2, text_wh);
     fill_rect(r, 1080, b_row_y + 8, 120, 6, rgba(30, 45, 65, 255));
-    fill_rect(r, 1080, b_row_y + 8, 70, 6, bmw_cyan);
+    int bmw_b_bar = (int)((state->fuel_pct / 100.0f) * 120.0f);
+    if (bmw_b_bar > 120) bmw_b_bar = 120;
+    if (bmw_b_bar < 0) bmw_b_bar = 0;
+    fill_rect(r, 1080, b_row_y + 8, bmw_b_bar, 6, bmw_cyan);
     draw_text(r, "0", 1068, b_row_y + 5, 1, text_dim);
     draw_text(r, "1", 1205, b_row_y + 5, 1, text_dim);
 }
@@ -1887,15 +1961,20 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     draw_text(r, "D", 410, top_y, 2, audi_green);
     draw_text(r, "(P)", 510, top_y, 2, audi_red);
 
-    /* Fuel Range Red Badge: 630 km */
-    fill_rect(r, 410, top_y + 24, 100, 24, audi_red);
-    draw_text_centered(r, "⛽ 630 km", 460, top_y + 28, 2, text_wh);
+    /* Dynamic Fuel Range Red Badge */
+    int audi_fuel_range = (int)(state->fuel_pct * (ui->use_mph ? 3.9f : 6.3f));
+    char audi_f_buf[24];
+    snprintf(audi_f_buf, sizeof(audi_f_buf), "%d %s", audi_fuel_range, ui->use_mph ? "mi" : "km");
+    fill_rect(r, 400, top_y + 24, 110, 24, (state->fuel_pct < 15.0f) ? rgba(200, 30, 40, 255) : audi_red);
+    draw_rect(r, 412, top_y + 29, 8, 12, 1, text_wh);
+    draw_line(r, 420, top_y + 31, 423, top_y + 35, text_wh);
+    draw_text_centered(r, audi_f_buf, 465, top_y + 28, 2, text_wh);
 
     /* Radio Station */
-    draw_text(r, "((o)) 2GB 873", 560, top_y + 28, 2, text_wh);
+    draw_text(r, "((o)) 2GB 873", 550, top_y + 28, 2, text_wh);
 
     /* Phone & Compass Icons */
-    draw_text(r, "📱  ▲", 725, top_y + 28, 2, text_dim);
+    draw_text(r, "[T]  ^", 725, top_y + 28, 2, text_dim);
     draw_line(r, 390, top_y + 54, 930, top_y + 54, rgba(40, 55, 80, 255));
 
     /* ================= LEFT SIDE: Date & Time, Oil Temp ================= */
@@ -1907,11 +1986,18 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     draw_text(r, "Wednesday", left_x + 100, mid_y - 48, 2, text_wh);
     draw_text(r, "11.3.2026", left_x + 100, mid_y - 26, 2, text_wh);
 
-    /* Oil Temperature Bar */
+    /* Dynamic Oil Temperature Bar */
     int oil_y = mid_y + 90;
+    float o_temp = (state->oil_temp > 20.0f) ? state->oil_temp : 102.0f;
+    float o_frac = (o_temp - 60.0f) / (140.0f - 60.0f);
+    if (o_frac < 0.0f) o_frac = 0.0f;
+    if (o_frac > 1.0f) o_frac = 1.0f;
+    int oil_fill_x = (left_x + 70) + (int)(o_frac * 160.0f);
     draw_thick_line(r, left_x + 70, oil_y, left_x + 230, oil_y, 3, rgba(30, 45, 65, 255));
-    draw_thick_line(r, left_x + 70, oil_y, left_x + 180, oil_y, 3, text_wh);
-    draw_text(r, "OIL 105°C", left_x + 115, oil_y + 10, 2, text_wh);
+    draw_thick_line(r, left_x + 70, oil_y, oil_fill_x, oil_y, 3, (o_temp > 125.0f) ? audi_red : text_wh);
+    char o_buf[24];
+    snprintf(o_buf, sizeof(o_buf), "OIL %.0f°C", o_temp);
+    draw_text(r, o_buf, left_x + 110, oil_y + 10, 2, text_wh);
 
     /* ================= CENTER: AUDI RS RUNWAY TACHOMETER ================= */
     /* Runway Hockey-stick geometry */
@@ -1978,18 +2064,24 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     draw_7seg_number_centered(r, ispd, 3, false, center_disp_x, mid_y - 28, 42, 64, 8, 7, text_wh, rgba(0, 0, 0, 0));
     draw_text_centered(r, ui->use_mph ? "mph" : "km/h", center_disp_x, mid_y + 44, 1, text_dim);
 
-    /* Gear indicator under speed: R / AUTO */
-    const char *gear_str = "R";
-    if (state->current_gear == 1) gear_str = "1";
-    else if (state->current_gear > 1) {
-        static char g_tmp[4];
-        snprintf(g_tmp, sizeof(g_tmp), "%d", state->current_gear);
-        gear_str = g_tmp;
-    } else if (state->speed_kmh < 1.0f) {
-        gear_str = "P";
+    /* Dynamic Gear indicator under speed: P / R / N / D <gear> / S <gear> and DYNAMIC / AUTO / PARK */
+    bool is_p = (state->speed_kmh < 1.0f && state->current_gear <= 0);
+    bool is_r = (state->current_gear == 0);
+    bool is_n = (state->current_gear == -1);
+    bool is_sport = (state->throttle_pct > 75.0f);
+
+    char audi_gear[12];
+    if (is_p) {
+        snprintf(audi_gear, sizeof(audi_gear), "P");
+    } else if (is_r) {
+        snprintf(audi_gear, sizeof(audi_gear), "R");
+    } else if (is_n) {
+        snprintf(audi_gear, sizeof(audi_gear), "N");
+    } else {
+        snprintf(audi_gear, sizeof(audi_gear), "%s %d", is_sport ? "S" : "D", state->current_gear);
     }
-    draw_text_centered(r, gear_str, center_disp_x, mid_y + 66, 3, text_wh);
-    draw_text_centered(r, "AUTO", center_disp_x, mid_y + 92, 1, text_dim);
+    draw_text_centered(r, audi_gear, center_disp_x, mid_y + 66, 3, is_r ? rgba(255, 195, 45, 255) : (is_sport ? audi_red : text_wh));
+    draw_text_centered(r, is_sport ? "DYNAMIC" : (is_p ? "PARK" : "AUTO"), center_disp_x, mid_y + 92, 1, is_sport ? audi_red : text_dim);
 
     /* Lane Assist Icon */
     draw_text_centered(r, "/🚗\\", center_disp_x + 130, mid_y + 72, 2, audi_green);
@@ -2036,15 +2128,22 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     int bot_y = content_y + content_h - 32;
     draw_thick_line(r, 180, bot_y - 14, 1100, bot_y - 14, 1, rgba(35, 50, 75, 255));
 
-    /* Left Odometer & Time */
-    draw_text(r, "8364 km", 500, bot_y - 2, 2, text_wh);
+    /* Dynamic Left Odometer & Time */
+    float trip_km = (float)state->current_lap * 4.5f + ((float)state->current_lap_ms / 60000.0f) * (state->speed_kmh * 0.015f);
+    char odo_buf[24];
+    snprintf(odo_buf, sizeof(odo_buf), "%d %s", (int)(8340 + trip_km), ui->use_mph ? "mi" : "km");
+    draw_text(r, odo_buf, 500, bot_y - 2, 2, text_wh);
     draw_text(r, "10:43 AM", 500, bot_y + 18, 2, text_dim);
 
-    /* Trip Distance */
-    draw_text(r, "19.1 km", 680, bot_y - 2, 2, text_wh);
+    /* Dynamic Trip Distance */
+    char trip_buf[24];
+    snprintf(trip_buf, sizeof(trip_buf), "%.1f %s", ui->use_mph ? (trip_km * 0.621371f) : trip_km, ui->use_mph ? "mi" : "km");
+    draw_text(r, trip_buf, 680, bot_y - 2, 2, text_wh);
 
     /* Temperature */
-    draw_text(r, "+ 23.5 °C", 680, bot_y + 18, 2, text_wh);
+    char a_temp_buf[24];
+    snprintf(a_temp_buf, sizeof(a_temp_buf), "%s", ui->use_mph ? "+ 74 °F" : "+ 23.5 °C");
+    draw_text(r, a_temp_buf, 680, bot_y + 18, 2, text_wh);
 }
 
 /* 4. VOLVO EX90 / GOOGLE BUILT-IN PANORAMIC CLUSTER (Full-Width Map, Floating Glass Pods, Sweeping Arcs) */
@@ -2176,31 +2275,63 @@ static void render_ev_volvo_ex(SDL_Renderer *r, const gt7_state_t *state, const 
     /* Green READY Badge */
     draw_text(r, "READY", r_pod_x + 32, r_pod_y + 24, 2, volvo_green);
 
-    /* Large P and PRND Column */
-    draw_text(r, "P", r_pod_x + 32, r_pod_y + 70, 5, text_wh);
+    /* Dynamic Transmission Gear & PRND Column */
+    bool is_p = (state->speed_kmh < 1.0f && state->current_gear <= 0);
+    bool is_r = (state->current_gear == 0);
+    bool is_n = (state->current_gear == -1);
+    bool is_d = (state->current_gear >= 1);
+    bool is_regen = (state->brake_pct > 12.0f);
 
-    static const char *v_prnd[3] = {"R", "N", "D"};
-    for (int p = 0; p < 3; ++p) {
-        draw_text(r, v_prnd[p], r_pod_x + 78, r_pod_y + 68 + p * 18, 2, text_dim);
+    const char *v_main = is_p ? "P" : (is_r ? "R" : (is_n ? "N" : "D"));
+    draw_text(r, v_main, r_pod_x + 28, r_pod_y + 70, 5, is_r ? rgba(255, 195, 45, 255) : text_wh);
+
+    if (is_d && state->current_gear > 0) {
+        char g_num[4];
+        snprintf(g_num, sizeof(g_num), "%d", state->current_gear);
+        draw_text(r, g_num, r_pod_x + 56, r_pod_y + 72, 2, volvo_cyan);
     }
-    draw_text(r, "- B +", r_pod_x + 58, r_pod_y + 130, 2, text_wh);
+
+    draw_text(r, "R", r_pod_x + 84, r_pod_y + 68, 2, is_r ? rgba(255, 195, 45, 255) : text_dim);
+    draw_text(r, "N", r_pod_x + 84, r_pod_y + 86, 2, is_n ? text_wh : text_dim);
+    draw_text(r, "D", r_pod_x + 84, r_pod_y + 104, 2, is_d ? text_wh : text_dim);
+
+    /* - B + (Regen One-Pedal Drive Level, lights up green during braking/regen) */
+    draw_text(r, "- B +", r_pod_x + 48, r_pod_y + 130, 2, is_regen ? volvo_green : text_wh);
 
     /* Power / Charge Text on Right Side of Pod */
-    draw_text(r, "power", r_pod_x + 145, r_pod_y + 80, 2, text_dim);
-    draw_text(r, "charge", r_pod_x + 145, r_pod_y + 115, 2, text_dim);
+    draw_text(r, "power", r_pod_x + 145, r_pod_y + 80, 2, (state->throttle_pct > 10.0f) ? text_wh : text_dim);
+    draw_text(r, "charge", r_pod_x + 145, r_pod_y + 115, 2, is_regen ? volvo_green : text_dim);
     draw_line(r, r_pod_x + 135, r_pod_y + 104, r_pod_x + 195, r_pod_y + 104, text_wh);
 
     /* ================= TOP STATUS BAR ================= */
     int t_row_y = content_y + 12;
     draw_text(r, "ED", 420, t_row_y, 2, volvo_green);
     draw_text(r, "/🚗\\", 590, t_row_y, 2, text_wh);
-    draw_text(r, "11 °C", 730, t_row_y, 2, text_wh);
-    draw_text(r, "🚗 !", 785, t_row_y, 2, rgba(235, 45, 55, 255));
+    char v_temp_buf[24];
+    snprintf(v_temp_buf, sizeof(v_temp_buf), "%s", ui->use_mph ? "52 °F" : "11 °C");
+    draw_text(r, v_temp_buf, 725, t_row_y, 2, text_wh);
+    draw_text(r, "🚗 !", 790, t_row_y, 2, rgba(235, 45, 55, 255));
 
-    /* ================= BOTTOM RIGHT RANGE STATUS ================= */
+    /* ================= BOTTOM RIGHT DUAL BATTERY / FUEL RANGE STATUS ================= */
     int b_row_y = content_y + content_h - 38;
-    draw_text(r, "🔋 === 0 km", 800, b_row_y - 16, 2, text_wh);
-    draw_text(r, "⛽ === 540 km", 800, b_row_y + 10, 2, text_wh);
+    int batt_km = (int)((state->fuel_pct > 0.0f ? state->fuel_pct : 85.0f) * (ui->use_mph ? 2.5f : 4.0f));
+    int fuel_km = (int)(state->fuel_pct * (ui->use_mph ? 3.4f : 5.4f));
+
+    /* Battery Icon & Bar */
+    fill_rect(r, 770, b_row_y - 14, 16, 10, volvo_cyan);
+    fill_rect(r, 786, b_row_y - 12, 2, 6, volvo_cyan);
+    draw_line(r, 794, b_row_y - 9, 830, b_row_y - 9, volvo_cyan);
+    char v_bat_buf[32];
+    snprintf(v_bat_buf, sizeof(v_bat_buf), "%d %s", batt_km, ui->use_mph ? "mi" : "km");
+    draw_text(r, v_bat_buf, 840, b_row_y - 16, 2, volvo_cyan);
+
+    /* Fuel Pump Icon & Bar */
+    draw_rect(r, 770, b_row_y + 11, 12, 12, 1, text_wh);
+    draw_line(r, 782, b_row_y + 13, 786, b_row_y + 17, text_wh);
+    draw_line(r, 794, b_row_y + 17, 830, b_row_y + 17, text_wh);
+    char v_fuel_buf[32];
+    snprintf(v_fuel_buf, sizeof(v_fuel_buf), "%d %s", fuel_km, ui->use_mph ? "mi" : "km");
+    draw_text(r, v_fuel_buf, 840, b_row_y + 10, 2, text_wh);
 }
 
 static void render_theme_ev_cockpit(SDL_Renderer *r, const gt7_state_t *state, const hud_ui_state_t *ui, uint32_t now_ms, int top_y, int bot_y) {

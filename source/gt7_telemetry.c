@@ -153,38 +153,51 @@ bool gt7_decrypt_packet(const uint8_t *raw, size_t len, uint8_t *decrypted_out) 
     }
 
     uint32_t iv1 = read_u32_le(raw, 0x40);
-    uint32_t xor_const = (len >= 0x13C) ? 0xDEADBEEFU : 0xDEADBEAFU;
-    uint32_t iv2 = iv1 ^ xor_const;
 
-    uint8_t nonce[8];
-    nonce[0] = (uint8_t)(iv2 & 0xFF);
-    nonce[1] = (uint8_t)((iv2 >> 8) & 0xFF);
-    nonce[2] = (uint8_t)((iv2 >> 16) & 0xFF);
-    nonce[3] = (uint8_t)((iv2 >> 24) & 0xFF);
-    nonce[4] = (uint8_t)(iv1 & 0xFF);
-    nonce[5] = (uint8_t)((iv1 >> 8) & 0xFF);
-    nonce[6] = (uint8_t)((iv1 >> 16) & 0xFF);
-    nonce[7] = (uint8_t)((iv1 >> 24) & 0xFF);
+    /* Format-specific Salsa20 nonce XOR constant:
+       - Packet ~ (344B): 0x55FABB4FU (EV / Hybrid telemetry format)
+       - Packet A (296B): 0xDEADBEAFU (Legacy baseline telemetry format)
+       - Packet B (316B) & Packet C (368B): 0xDEADBEEFU (Dynamic 6-DoF & Motorsport format)
+       Multi-layer fallback candidate seeds are prioritized based on packet length.
+    */
+    uint32_t candidates[3];
+    if (len == 344) {
+        candidates[0] = 0x55FABB4FU;
+        candidates[1] = 0xDEADBEEFU;
+        candidates[2] = 0xDEADBEAFU;
+    } else if (len == 296) {
+        candidates[0] = 0xDEADBEAFU;
+        candidates[1] = 0xDEADBEEFU;
+        candidates[2] = 0x55FABB4FU;
+    } else {
+        candidates[0] = 0xDEADBEEFU;
+        candidates[1] = 0x55FABB4FU;
+        candidates[2] = 0xDEADBEAFU;
+    }
 
-    salsa20_ctx_t ctx;
-    salsa20_init(&ctx, (const uint8_t *)GT7_SALSA_KEY, nonce);
-    salsa20_crypt(&ctx, raw, decrypted_out, len);
-
-    uint32_t magic = read_u32_le(decrypted_out, 0x00);
-    if (magic != GT7_MAGIC_G7S0) {
-        iv2 = iv1 ^ 0xDEADBEAFU;
+    for (int i = 0; i < 3; ++i) {
+        uint32_t iv2 = iv1 ^ candidates[i];
+        uint8_t nonce[8];
         nonce[0] = (uint8_t)(iv2 & 0xFF);
         nonce[1] = (uint8_t)((iv2 >> 8) & 0xFF);
         nonce[2] = (uint8_t)((iv2 >> 16) & 0xFF);
         nonce[3] = (uint8_t)((iv2 >> 24) & 0xFF);
+        nonce[4] = (uint8_t)(iv1 & 0xFF);
+        nonce[5] = (uint8_t)((iv1 >> 8) & 0xFF);
+        nonce[6] = (uint8_t)((iv1 >> 16) & 0xFF);
+        nonce[7] = (uint8_t)((iv1 >> 24) & 0xFF);
+
+        salsa20_ctx_t ctx;
         salsa20_init(&ctx, (const uint8_t *)GT7_SALSA_KEY, nonce);
         salsa20_crypt(&ctx, raw, decrypted_out, len);
-        magic = read_u32_le(decrypted_out, 0x00);
-        if (magic != GT7_MAGIC_G7S0) {
-            return false;
+
+        uint32_t magic = read_u32_le(decrypted_out, 0x00);
+        if (magic == GT7_MAGIC_G7S0) {
+            return true;
         }
     }
-    return true;
+
+    return false;
 }
 
 /* Detect local Wi-Fi IP & /24 subnet prefix using a non-transmitting UDP routing probe */
@@ -404,9 +417,49 @@ static void gt7_parse_decrypted(gt7_client_t *client, gt7_state_t *state, const 
     state->vel_y = read_f32_le(d, 0x14);
     state->vel_z = read_f32_le(d, 0x18);
 
-    state->pitch = read_f32_le(d, 0x1C);
-    state->yaw   = read_f32_le(d, 0x20);
-    state->roll  = read_f32_le(d, 0x24);
+    /* Orientation Quaternion (0x01C..0x02B: X, Y, Z, W) */
+    state->orient_x = read_f32_le(d, 0x1C);
+    state->orient_y = read_f32_le(d, 0x20);
+    state->orient_z = read_f32_le(d, 0x24);
+    state->orient_w = read_f32_le(d, 0x28);
+
+    /* 3-axis Angular Velocity in rad/s (0x02C..0x037: X, Y, Z) */
+    state->angular_vel[0] = read_f32_le(d, 0x2C);
+    state->angular_vel[1] = read_f32_le(d, 0x30);
+    state->angular_vel[2] = read_f32_le(d, 0x34);
+
+    /* Derive true Euler angles (pitch, yaw, roll) from orientation quaternion */
+    float qx = state->orient_x;
+    float qy = state->orient_y;
+    float qz = state->orient_z;
+    float qw = state->orient_w;
+    float q_norm = sqrtf(qx * qx + qy * qy + qz * qz + qw * qw);
+    if (q_norm > 0.001f) {
+        qx /= q_norm;
+        qy /= q_norm;
+        qz /= q_norm;
+        qw /= q_norm;
+
+        float sinr_cosp = 2.0f * (qw * qx + qy * qz);
+        float cosr_cosp = 1.0f - 2.0f * (qx * qx + qy * qy);
+        float roll_rad = atan2f(sinr_cosp, cosr_cosp);
+
+        float sinp = 2.0f * (qw * qy - qz * qx);
+        float pitch_rad;
+        if (fabsf(sinp) >= 1.0f) {
+            pitch_rad = copysignf((float)M_PI / 2.0f, sinp);
+        } else {
+            pitch_rad = asinf(sinp);
+        }
+
+        float siny_cosp = 2.0f * (qw * qz + qx * qy);
+        float cosy_cosp = 1.0f - 2.0f * (qy * qy + qz * qz);
+        float yaw_rad = atan2f(siny_cosp, cosy_cosp);
+
+        state->yaw   = yaw_rad;
+        state->pitch = pitch_rad * (180.0f / (float)M_PI);
+        state->roll  = roll_rad * (180.0f / (float)M_PI);
+    }
 
     state->body_height = read_f32_le(d, 0x38) * 1000.0f;
     state->engine_rpm  = read_f32_le(d, 0x3C);
@@ -439,11 +492,13 @@ static void gt7_parse_decrypted(gt7_client_t *client, gt7_state_t *state, const 
 
     for (int i = 0; i < 4; ++i) {
         state->tire_temp[i]   = read_f32_le(d, 0x60 + i * 4);
-        state->tire_rps[i]    = fabs(read_f32_le(d, 0xA4 + i * 4));
-        state->tire_radius[i] = read_f32_le(d, 0xB4 + i * 4);
-        state->susp_height[i] = read_f32_le(d, 0xC4 + i * 4) * 1000.0f;
+        state->wheel_angular_speed[i] = read_f32_le(d, 0xA4 + i * 4); /* rad/s (0xA4..0xB3) */
+        state->tire_rps[i]    = fabsf(state->wheel_angular_speed[i]) / (2.0f * (float)M_PI);
+        state->tire_radius[i] = read_f32_le(d, 0xB4 + i * 4);        /* m (0xB4..0xC3) */
+        state->susp_height[i] = read_f32_le(d, 0xC4 + i * 4) * 1000.0f; /* mm (0xC4..0xD3) */
 
-        float wheel_speed = state->tire_rps[i] * state->tire_radius[i];
+        /* Linear wheel tangential speed v = omega * r (m/s) */
+        float wheel_speed = fabsf(state->wheel_angular_speed[i]) * state->tire_radius[i];
         if (state->speed_ms > 2.0f) {
             float slip = (wheel_speed - state->speed_ms) / state->speed_ms;
             if (slip < -1.0f) slip = -1.0f;
@@ -484,13 +539,13 @@ static void gt7_parse_decrypted(gt7_client_t *client, gt7_state_t *state, const 
     client->hb_fail_count = 0;
 
     /* Check for Packet B extensions (len >= 316 / 0x13C) */
-    if (len >= 0x13C) {
+    if (len >= 316) {
         state->has_packet_b = true;
-        state->wheel_rotation   = read_f32_le(d, 0x128);
-        state->steering_ang_vel = read_f32_le(d, 0x12C);
-        state->native_sway      = read_f32_le(d, 0x130);
-        state->native_heave     = read_f32_le(d, 0x134);
-        state->native_surge     = read_f32_le(d, 0x138);
+        state->wheel_rotation   = read_f32_le(d, 0x128); /* rad */
+        state->steering_ang_vel = read_f32_le(d, 0x12C); /* rad/s */
+        state->native_sway      = read_f32_le(d, 0x130); /* lateral accel */
+        state->native_heave     = read_f32_le(d, 0x134); /* vertical accel */
+        state->native_surge     = read_f32_le(d, 0x138); /* longitudinal accel */
 
         /* Directly use high-fidelity native G-forces if valid */
         if (fabsf(state->native_sway) > 0.001f || fabsf(state->native_surge) > 0.001f) {
@@ -506,59 +561,77 @@ static void gt7_parse_decrypted(gt7_client_t *client, gt7_state_t *state, const 
         state->native_surge = 0.0f;
     }
 
-    /* Check for Packet C extensions (len >= 368 / 0x170) */
-    if (len >= 0x170) {
+    /* Strict separation between Packet C (len >= 368) and Packet ~ (len == 344) */
+    if (len >= 368) {
         state->rx_packet_type = 'C';
         state->has_packet_c = true;
         state->has_packet_tilde = false;
 
+        /* 0x13C..0x13F: Four-wheel contact surface type ('T', 'C', 'D', 'G', 'S') */
         state->surface_type[0] = d[0x13C];
         state->surface_type[1] = d[0x13D];
         state->surface_type[2] = d[0x13E];
         state->surface_type[3] = d[0x13F];
 
+        /* 0x140..0x143: Current live lap time in ms */
         state->current_lap_time_ms = read_i32_le(d, 0x140);
         if (state->current_lap_time_ms > 0) {
             state->current_lap_ms = state->current_lap_time_ms;
         }
 
+        /* 0x144..0x14B: Front wheel steering angle (rad -> deg) */
         float rad_fl = read_f32_le(d, 0x144);
         float rad_fr = read_f32_le(d, 0x148);
         state->steer_angle_fl_deg = rad_fl * (180.0f / (float)M_PI);
         state->steer_angle_fr_deg = rad_fr * (180.0f / (float)M_PI);
+
+        /* 0x14C..0x14F: Wheelbase in meters */
         state->wheel_base_m = read_f32_le(d, 0x14C);
 
-        memcpy(state->car_category, d + 0x150, 8);
-        state->car_category[8] = '\0';
-        for (int c = 0; c < 8; ++c) {
+        /* 0x150..0x153: Car category string (4 bytes, e.g. "GR3", "GR4") */
+        memcpy(state->car_category, d + 0x150, 4);
+        state->car_category[4] = '\0';
+        for (int c = 0; c < 4; ++c) {
             if ((uint8_t)state->car_category[c] < 32 || (uint8_t)state->car_category[c] > 126) {
                 state->car_category[c] = '\0';
                 break;
             }
         }
 
-        state->downforce_front_kg = read_f32_le(d, 0x15C);
-        state->downforce_rear_kg  = read_f32_le(d, 0x160);
-        state->trans_oil_temp     = read_f32_le(d, 0x164);
-    } else if (len >= 0x158) { /* Packet ~ extensions (len >= 344 / 0x158) */
+        /* 0x154..0x16F: 28-byte unconfirmed tail region, preserved safely */
+        memcpy(state->unknown_tail, d + 0x154, 28);
+
+    } else if (len == 344) {
+        /* Packet ~ (344 bytes) - Advanced EV / Hybrid & Torque Vectoring */
         state->rx_packet_type = '~';
         state->has_packet_tilde = true;
         state->has_packet_c = false;
 
+        /* 0x13C..0x13D: Filtered throttle & brake outputs (0..255 -> 0..100%) */
         state->throttle_filtered = ((float)d[0x13C] / 255.0f) * 100.0f;
         state->brake_filtered    = ((float)d[0x13D] / 255.0f) * 100.0f;
-        state->tcs_cut_pct       = (float)d[0x13E];
-        state->abs_cut_pct       = (float)d[0x13F];
 
+        /* 0x13E: Powertrain / Motor configuration flags */
+        state->powertrain_flags = d[0x13E];
+
+        /* 0x13F: Energy recovery available flag */
+        state->energy_recovery_avail = (d[0x13F] != 0);
+
+        /* 0x140..0x14F: 4-wheel torque vectoring in Nm (FL, FR, RL, RR) */
         state->torque_vector_nm[0] = read_f32_le(d, 0x140);
         state->torque_vector_nm[1] = read_f32_le(d, 0x144);
         state->torque_vector_nm[2] = read_f32_le(d, 0x148);
         state->torque_vector_nm[3] = read_f32_le(d, 0x14C);
 
+        /* 0x150..0x153: Live energy recovery power */
         state->energy_recovery_kw = read_f32_le(d, 0x150);
-        state->battery_soc_pct    = read_f32_le(d, 0x154);
+
+        /* 0x154..0x157: Normalized engine output torque */
+        state->engine_torque_norm = read_f32_le(d, 0x154);
+
     } else {
-        state->rx_packet_type = (len >= 0x13C) ? 'B' : 'A';
+        /* Baseline Packet A (296B) or Packet B (316B) */
+        state->rx_packet_type = (len >= 316) ? 'B' : 'A';
         state->has_packet_c = false;
         state->has_packet_tilde = false;
     }
@@ -832,6 +905,22 @@ void gt7_update_demo(gt7_state_t *state, uint32_t now_ms, int theme_index) {
     state->pitch = -state->g_lon * 1.8f;
     state->body_height = 58.0f - state->g_lon * 6.0f;
 
+    /* Synthesize 3D Orientation Quaternion & 3-Axis Angular Velocity */
+    float r_rad = state->roll * ((float)M_PI / 180.0f);
+    float p_rad = state->pitch * ((float)M_PI / 180.0f);
+    float y_rad = state->yaw;
+    float cr = cosf(r_rad * 0.5f), sr = sinf(r_rad * 0.5f);
+    float cp = cosf(p_rad * 0.5f), sp = sinf(p_rad * 0.5f);
+    float cy = cosf(y_rad * 0.5f), sy = sinf(y_rad * 0.5f);
+    state->orient_w = cr * cp * cy + sr * sp * sy;
+    state->orient_x = sr * cp * cy - cr * sp * sy;
+    state->orient_y = cr * sp * cy + sr * cp * sy;
+    state->orient_z = cr * cp * sy - sr * sp * cy;
+
+    state->angular_vel[0] = -state->g_lon * 0.22f; /* rad/s pitch rate */
+    state->angular_vel[1] = state->g_lat * 0.88f;  /* rad/s yaw rate */
+    state->angular_vel[2] = state->g_lat * 0.35f;  /* rad/s roll rate */
+
     for (int i = 0; i < 4; ++i) {
         float load_heat = (i == 0 || i == 2) ? (state->g_lat * 6.5f) : (-state->g_lat * 6.5f);
         float brake_heat = (i < 2) ? (brake * 0.12f) : (brake * 0.06f);
@@ -840,6 +929,10 @@ void gt7_update_demo(gt7_state_t *state, uint32_t now_ms, int theme_index) {
             ? (0.18f + 0.12f * fabsf(sinf(t * 15.0f + (float)i)))
             : (0.02f + 0.03f * fabsf(state->g_lat));
         state->susp_height[i] = 62.0f + ((i < 2) ? (state->g_lon * 8.0f) : (-state->g_lon * 8.0f));
+
+        state->tire_radius[i] = 0.33f;
+        state->wheel_angular_speed[i] = (state->speed_ms / state->tire_radius[i]) * (1.0f + state->tire_slip_ratio[i]);
+        state->tire_rps[i] = fabsf(state->wheel_angular_speed[i]) / (2.0f * (float)M_PI);
     }
 
     state->current_lap   = 5;
@@ -893,6 +986,9 @@ void gt7_update_demo(gt7_state_t *state, uint32_t now_ms, int theme_index) {
         state->battery_soc_pct = 78.4f - fmodf(t * 0.05f, 25.0f);
         state->throttle_filtered = state->throttle_pct;
         state->brake_filtered    = state->brake_pct;
+        state->powertrain_flags  = 0x03; /* AWD Dual Motor Configuration */
+        state->energy_recovery_avail = true;
+        state->engine_torque_norm = (throttle > 5.0f) ? (throttle / 100.0f) : (brake > 5.0f ? -brake / 100.0f : 0.0f);
 
         if (brake > 5.0f) {
             /* Active Regenerative Braking up to -285 kW */
@@ -920,14 +1016,17 @@ void gt7_update_demo(gt7_state_t *state, uint32_t now_ms, int theme_index) {
         state->has_packet_c = true;
         state->has_packet_tilde = false;
 
-        /* Official GT7 Car Category tag */
-        if (theme_index == 0) strncpy(state->car_category, "Gr.3", sizeof(state->car_category));
-        else if (theme_index == 1) strncpy(state->car_category, "Gr.2", sizeof(state->car_category));
-        else if (theme_index == 3) strncpy(state->car_category, "Gr.1", sizeof(state->car_category));
-        else if (theme_index == 4) strncpy(state->car_category, "GT3", sizeof(state->car_category));
-        else if (theme_index == 5) strncpy(state->car_category, "Gr.B", sizeof(state->car_category));
+        /* Official GT7 Car Category tag (4-char null-terminated) */
+        if (theme_index == 0) strncpy(state->car_category, "GR3", sizeof(state->car_category));
+        else if (theme_index == 1) strncpy(state->car_category, "GR2", sizeof(state->car_category));
+        else if (theme_index == 3) strncpy(state->car_category, "GR1", sizeof(state->car_category));
+        else if (theme_index == 4) strncpy(state->car_category, "GR3", sizeof(state->car_category));
+        else if (theme_index == 5) strncpy(state->car_category, "GRB", sizeof(state->car_category));
         else if (theme_index == 6) strncpy(state->car_category, "ROAD", sizeof(state->car_category));
-        else strncpy(state->car_category, "PRO-SPEC", sizeof(state->car_category));
+        else strncpy(state->car_category, "SPEC", sizeof(state->car_category));
+        state->car_category[4] = '\0';
+
+        memset(state->unknown_tail, 0, sizeof(state->unknown_tail));
 
         /* Dynamic Contact Patch Surface */
         state->surface_type[0] = 'T';

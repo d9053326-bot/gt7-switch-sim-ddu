@@ -13,7 +13,7 @@ extern "C" {
 #define GT7_RECV_PORT 33740
 #define GT7_MAGIC_G7S0 0x47375330U
 
-#define GT7_APP_VERSION "_aw_1.10.29.1350"
+#define GT7_APP_VERSION "_aw_1.10.29.1415"
 
 #define GT7_TRACE_LEN 160
 #define GT7_TRACK_PTS 500
@@ -114,10 +114,11 @@ typedef struct {
 
     /* Tires (0: FL, 1: FR, 2: RL, 3: RR) */
     float tire_temp[4];      /* Surface temperature in Celsius (0x60..0x6C) */
-    float tire_rps[4];       /* Wheel rev/sec (0xA4..0xB0) */
+    float wheel_angular_speed[4]; /* Wheel angular velocity in rad/s (0xA4..0xB0) */
+    float tire_rps[4];       /* Backwards compatibility: wheel rev/sec (wheel_angular_speed / 2*pi) */
     float tire_radius[4];    /* Tire radius in meters (0xB4..0xC0) */
     float tire_slip_ratio[4];/* Calculated wheel slip ratio for traction visualization */
-    float susp_height[4];    /* Suspension height (0xC4..0xD0) */
+    float susp_height[4];    /* Suspension height in mm (0xC4..0xD0) */
 
     /* Laps, Sectors & Timing */
     int16_t current_lap;     /* Current lap (0x74) */
@@ -136,10 +137,13 @@ typedef struct {
     /* Dynamics & World Coordinates */
     float pos_x, pos_y, pos_z;
     float vel_x, vel_y, vel_z;
-    float pitch, yaw, roll;
+    /* Raw Orientation Quaternion (0x01C..0x02B: x, y, z, w) & Angular Velocity (rad/s) */
+    float orient_x, orient_y, orient_z, orient_w;
+    float angular_vel[3];    /* 3-axis body angular velocity in rad/s (0x02C..0x037) */
+    float pitch, yaw, roll;  /* Derived true Euler angles (rad) */
     float g_lat;             /* Lateral G-force (cornering) */
     float g_lon;             /* Longitudinal G-force (braking/accel) */
-    float body_height;       /* Ride height (0x38) */
+    float body_height;       /* Ride height in mm (0x38) */
     int32_t car_code;        /* GT7 internal car ID (0x124) */
     uint16_t flags;          /* Bitmask gt7_flags_t (0x8E) */
 
@@ -166,24 +170,27 @@ typedef struct {
     size_t rx_packet_len;    /* Actual decrypted packet length (296, 316, 344, 368) */
     char rx_packet_type;     /* 'A', 'B', '~', 'C' */
     bool has_packet_b;       /* True if packet >= 316 bytes */
-    bool has_packet_tilde;   /* True if packet >= 344 bytes */
-    bool has_packet_c;       /* True if packet >= 368 bytes */
+    bool has_packet_tilde;   /* True if packet == 344 bytes */
+    bool has_packet_c;       /* True if packet == 368 bytes */
 
     /* Packet B (0x128..0x13B) - Native 6-DoF Inertial Acceleration & Rates */
-    float native_sway;       /* Live lateral G-force (0x130) */
-    float native_heave;      /* Live vertical bump G-force (0x134) */
-    float native_surge;      /* Live longitudinal accel/brake G-force (0x138) */
+    float native_sway;       /* Live lateral acceleration (0x130) */
+    float native_heave;      /* Live vertical bump acceleration (0x134) */
+    float native_surge;      /* Live longitudinal acceleration (0x138) */
     float steering_ang_vel;  /* Steering angular velocity in rad/s (0x12C) */
-    float wheel_rotation;    /* Wheel rotation rate (0x128) */
+    float wheel_rotation;    /* Wheel rotation in rad (0x128) */
 
     /* Packet ~ (0x13C..0x157) - Advanced EV / Hybrid & Actuator Channels */
-    float throttle_filtered; /* Filtered throttle % (0x13C) */
-    float brake_filtered;    /* Filtered brake % (0x13D) */
-    float tcs_cut_pct;       /* Active TCS engine throttle cut % (0x13E) */
-    float abs_cut_pct;       /* Active ABS brake modulation cut % (0x13F) */
+    float throttle_filtered; /* Filtered throttle % (0x13C, 0-255 -> 0-100%) */
+    float brake_filtered;    /* Filtered brake % (0x13D, 0-255 -> 0-100%) */
+    uint8_t powertrain_flags;/* Powertrain / Motor configuration flags (0x13E) */
+    bool energy_recovery_avail; /* Energy recovery data availability flag (0x13F) */
+    float tcs_cut_pct;       /* Active TCS engine throttle cut % */
+    float abs_cut_pct;       /* Active ABS brake modulation cut % */
     float torque_vector_nm[4]; /* Per-wheel motor torque in Nm (0x140..0x14C: FL, FR, RL, RR) */
-    float energy_recovery_kw;/* Live EV/Hybrid regenerative recharge power in kW (0x150) */
-    float battery_soc_pct;   /* EV Battery State of Charge % (0x154) */
+    float energy_recovery_kw;/* Live EV/Hybrid regenerative recharge power (0x150) */
+    float engine_torque_norm;/* Normalized engine output torque (0x154) */
+    float battery_soc_pct;   /* EV Battery State of Charge % */
 
     /* Packet C (0x13C..0x16F) - Motorsport Contact Patch, Steering & Category */
     uint8_t surface_type[4]; /* Tire contact surface type: 'T'=Tarmac, 'C'=Curb, 'D'=Dirt, 'G'=Grass, 'S'=Snow (0x13C..0x13F) */
@@ -191,10 +198,11 @@ typedef struct {
     float steer_angle_fl_deg;/* Front Left wheel steering angle in degrees (0x144, converted from rad) */
     float steer_angle_fr_deg;/* Front Right wheel steering angle in degrees (0x148, converted from rad) */
     float wheel_base_m;      /* Vehicle wheelbase in meters (0x14C) */
-    char car_category[16];   /* GT7 Category string: "Gr.1", "Gr.2", "Gr.3", "Gr.4", "Gr.B", "Road" (0x150..0x157) */
-    float downforce_front_kg;/* Front aero downforce in kg (0x15C) */
-    float downforce_rear_kg; /* Rear aero downforce in kg (0x160) */
-    float trans_oil_temp;    /* Transmission oil temp in °C (0x164) */
+    char car_category[8];    /* GT7 Category string: e.g. "GR3", "GR4", "GR1", "GRB" (0x150..0x153) */
+    uint8_t unknown_tail[28];/* Unconfirmed tail area (0x154..0x16F), preserved for verification */
+    float downforce_front_kg;/* Front aero downforce in kg */
+    float downforce_rear_kg; /* Rear aero downforce in kg */
+    float trans_oil_temp;    /* Transmission oil temp in °C */
 
     /* Lap History Table for Track Info Mode */
     gt7_lap_record_t lap_history[GT7_MAX_LAPS];

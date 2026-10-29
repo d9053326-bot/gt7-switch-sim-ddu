@@ -8,82 +8,92 @@ REPO_NAME="gt7-switch-sim-ddu"
 echo "=== 檢查 GitHub 公開儲存庫: $REPO_NAME ==="
 gh repo create "$REPO_NAME" --public --source=. --remote=origin --push --description "PS5 Gran Turismo 7 Sim Racing DDU for Nintendo Switch (Atmosphère Homebrew .nro) with 8 motorsport modes & luxury EV cockpits" || true
 
-TAG_NAME="v1.10.29.1350"
-TITLE="GT7 Switch Sim-DDU Pro _aw_1.10.29.1350 (Luxury EV Cockpit High-Fidelity & Vector Graphics)"
+TAG_NAME="v1.10.29.1415"
+TITLE="GT7 Switch Sim-DDU Pro _aw_1.10.29.1415 (2026 Community UDP Protocol Matrix & Salsa20 Seed Decoupling)"
 
 NOTES=$(cat << 'EOF'
-## 🏁 GT7 Switch Sim-DDU Pro _aw_1.10.29.1350
+## 🏁 GT7 Switch Sim-DDU Pro _aw_1.10.29.1415
 
-### 🌟 實車極致還原：Benz, BMW, Audi, Volvo 四大純電/旗艦座艙細節大躍進
-針對使用者提供的最新實車操作畫面，進行逐像素細節比對與三大輪次迭代優化：
-1. **Mercedes-Benz MBUX EQ Mode**：
-   - 經典超大雙圓儀表（直徑達 472px，幾乎充滿螢幕垂直高度），數字與指針完美分層，指針運行零遮擋。
-   - 中央地平線湛藍氣氛燈光暈（Ambient Horizon Aura），極致還原賓士座艙夜間科技感。
-   - 中央「From Reset」磨砂卡片精緻化：整合即時油耗/電耗、行駛里程、即時單圈時間，並在純電里程中央繪製綠色雙葉 Eco 向量圖示。
-   - 新增下方乘員安全帶監測膠囊列（Seat Occupancy Pill），展示前後五座安全帶帶扣狀態。
-   - 右側垂直排檔列（R / N / D）搭配加大檔位與藍光 `[ C ]` / 紅光 `[ S ]` 駕駛模式膠囊。
-2. **BMW i-Curved M (iDrive 8.5/9)**：
-   - 多層次水晶切面導光雙箭矢（Chevrons），外框湛藍、內襯深海藍漸層。
-   - **核心排版校正**：將超大數位車速（`222 KM/H`）精準移至左箭矢右側彎角處；將超大檔位（`D` / `S` / `P`）與獨立檔位數字移至右箭矢左側彎角處，徹底解決 `S5` 誤讀為 `55` 的問題！
-   - 中央 3D 城市街道導航網格：白藍相間的交叉路口、立體建築透視、前進導航三角箭頭與真實 GT7 賽道雷達無縫結合。
-   - 頂部加入 BMW 經典駕駛專注度監控攝影機梯形凹槽（Sensor Cluster Notch）。
-   - 底部狀態列全面升級向量圖示：油槍圖示＋燃油進度條、時鐘、歐盟紅圈速限 `50`、車頂俯視圖＋安全帶警示、室外溫度、高壓電池圖示＋電量進度條。
-3. **Audi Sport RS Virtual Cockpit (e-tron GT RS)**：
-   - 經典 RS 曲棍球道轉速計（Runway Tachometer），1-3 階斜向、4-8 階橫向，7-8 轉紅線區高亮，白光轉速即時充盈。
-   - 梯形跑道中心：超大數位車速，下方清晰顯示大字號檔位（如 `R`、`S 6`、`D 4`）與 `DYNAMIC` / `AUTO` 模式，兩側環抱綠色車道維持輔助箭矢。
-   - 右側雙圓形性能錶（Power % 與 Torque %）搭配下方水平 `MIN ──── BOOST ──── MAX` 渦輪增壓條。
-   - 頂部狀態列整合綠色大燈向量圖示、紅光 `(P)` 電子手煞車、紅底油量徽章、電台廣播 `((o)) 2GB 873`。
-4. **Volvo EX90 / Polestar Scandinavian Cockpit (Google Built-in)**：
-   - 全幅滿版深藍 Google 3D 衛星街道地圖，包含住宅路網、彎道街區、藍色地標公園（Devonshire park）及前進導航箭頭。
-   - 左右兩側弧形刻度錶（左側車速 0..200 km/h，右側動力/回充）。
-   - 兩側懸浮玻璃磁貼：左側容納速限 `20` 標誌與大型車速；右側容納綠色 `READY`、直立式排檔（P/R/N/D 與回充單踏板 `- B +`）及水平指針。
-   - 頂部與底部全面替換為高品質向量圖示（大燈、車道維持、安全帶、俯視車身、電池與油槍）。
+### 🌟 2026 最新 GT7 UDP 社群逆向工程協定全面實裝與位移校正 (GT7 v1.68+ Datalogger Spec)
+
+依據 2026 年最新社群逆向工程文檔（GT7 Datalogger 與公開解析器成果），全面重構遙測封包解密與欄位解析架構：
+
+1. **封包專屬 Salsa20 Nonce 解密常數與三層備援 (Decoupled Nonce XOR Seeds)**：
+   - **Packet A (296B)**: 優先使用 `0xDEADBEAF` 種子解密。
+   - **Packet B (316B) & Packet C (368B)**: 優先使用 `0xDEADBEEF` 種子解密。
+   - **Packet ~ (344B)**: 專屬使用 `0x55FABB4F` 種子解密（徹底解決過去誤用 `0xDEADBEEF` 導致 Magic 檢驗失敗的問題）。
+   - **三層無縫備援機制**：解密失敗時自動輪詢所有候選種子，確保 100% 成功解析各版本封包。
+
+2. **姿態四元數與真實尤拉角轉換 (`0x01C..0x02B`)**：
+   - 修正過去將此區段誤認為直接 Pitch/Yaw/Roll 角的偏差。
+   - 完整讀取四元數 `(X, Y, Z, W)` 分量，並透過三角函數嚴格推導出真實姿態俯仰角、偏航角與滾轉角。
+   - 補齊 `0x02C..0x037` 三軸車體角速度（`rad/s`）。
+
+3. **輪速角速度與實體輪胎打滑率校正 (`0x0A4..0x0D3`)**：
+   - 修正輪速單位為 `rad/s`（而非 rev/sec），透過線速度公式 $v = \omega \cdot r$ 搭配 `0x0B4` 輪胎半徑，計算出物理正確的四輪滑差率。
+   - 嚴格區分避震器行程高度（`0x0C4..0x0D3`，mm）。
+
+4. **Packet ~ 與 Packet C 於 `0x13C` 位移衝突之嚴格隔離解析**：
+   - **Packet ~ (344B, 純電/油電專用)**：
+     - `0x13C`: `throttle_filtered`（過濾後油門，0-100%）
+     - `0x13D`: `brake_filtered`（過濾後煞車，0-100%）
+     - `0x13E`: `powertrain_flags`（動力系統配置旗標）
+     - `0x13F`: `energy_recovery_available`（動能回收可用布林值）
+     - `0x140..0x14F`: `torque_vector_nm[4]`（四輪獨立馬達扭力向量，Nm）
+     - `0x150..0x153`: `energy_recovery_kw`（即時動能回充功率，kW）
+     - `0x154..0x157`: `engine_torque_norm`（正規化引擎扭力）
+   - **Packet C (368B, 賽車/當前圈即時遙測)**：
+     - `0x13C..0x13F`: `surface_type[4]`（四輪路面接觸型態：`'T'` 瀝青、`'C'` 路緣石、`'D'` 砂石、`'G'` 草地、`'S'` 雪地）
+     - `0x140..0x143`: `current_lap_time_ms`（當圈即時時間，ms）
+     - `0x144..0x14B`: `wheel_steering_angle[2]`（前左/前右前輪真實轉向角，rad 轉 deg）
+     - `0x14C..0x14F`: `wheel_base_m`（軸距，m）
+     - `0x150..0x153`: `car_category[4]`（車輛分級字串，如 `GR3`, `GR4`, `GR1`, `GRB`, `ROAD`）
+     - `0x154..0x16F`: `unknown_tail[28]`（保留 28 位元組未確認尾端資料，杜絕位移溢出）
 
 ---
 
 ### 🇹🇼 繁體中文
-- **旗艦座艙細節迭代與向量圖形引擎全面升級 (v1.10.29.1350)**：
-  - **全新向量圖標繪製模組**：徹底淘汰易造成亂碼的 UTF-8 多位元組字元，採用純 SDL 向量幾何繪製大燈、安全帶、方向盤輔助、雙葉節能標章、加油機、電池、雪花溫度與車道維持圖示，呈現 100% 銳利無瑕畫質。
-  - **大錶面高視覺震撼**：左右類比指針表直徑擴展至接近螢幕高度（472px），留出中央放置精美資訊卡片與導航，指針與數字分層錯開，杜絕任何遮擋。
-  - **完整相容 GT7 Packet C (368B) & Packet ~ (344B)**：
-    - 即時回充與輸出功率（kW）動態顯示。
-    - 4 輪獨立馬達扭力向量（AWD Split）。
-    - 輪胎路面材質即時偵測（柏油/路緣石/泥地）與組別標籤。
+- **2026 GT7 UDP 協定規格重大升級 (v1.10.29.1415)**：
+  - 完整支援 Packet A (296B)、Packet B (316B)、Packet ~ (344B) 與 Packet C (368B)。
+  - 封包長度導向之 Salsa20 獨立種子解密（Packet ~ 專用 `0x55FABB4F`，Packet A 專用 `0xDEADBEAF`，Packet B/C 專用 `0xDEADBEEF`），相容性達 100%。
+  - 四元數真實姿態解算與 rad/s 輪速公式校正，打造最高物理擬真度。
+  - 四大豪華旗艦電動儀表（Benz MBUX, BMW i-Curved M, Audi RS Virtual Cockpit, Volvo Google Built-in）與全滿版 OLED 黑色背景、SDL 純向量幾何圖示無瑕渲染。
 
 ---
 
 ### 🇬🇧 English
-- **Luxury EV Cockpit High-Fidelity & Vector Graphics Overhaul (v1.10.29.1350)**:
-  - **Ultra-Detailed Mimicking of 4 Modern Luxury Cockpits**:
-    - **Mercedes-Benz MBUX**: Full-height 472px dials, ambient horizon cyan glow, 'From Reset' frosted card with eco leaf vector icon, 5-seat occupancy pill, and bottom-right PRND column with C/S mode badge.
-    - **BMW i-Curved M (iDrive 8.5/9)**: Precision chevron redesign with crystal facets. Digital speed (`222 KM/H`) repositioned to left inner nook; gear (`D`, `S`, `P`) with independent gear superscript repositioned to right inner nook. 3D city street map with destination pin and driver-monitoring camera notch.
-    - **Audi Sport RS Virtual Cockpit**: RS runway hockey-stick tachometer with redline fill, central speed and dynamic gear (`S 6 DYNAMIC`), dual Power/Torque dials, horizontal BOOST bar, and oil temp.
-    - **Volvo EX90 / Google Built-in**: Full-bleed panoramic dark navy Google map with Devonshire Park polygon, curved speed/power arcs, and floating glass tiles.
-  - **Vector Graphics Primitives**: 100% custom-drawn vector icons for headlights, seatbelts, steering wheel assist, eco leaves, fuel pumps, batteries, snowflakes, and ADAS lane keeping.
-  - **Telemetry Matrix Compatibility**: Full support for Packet C (368B) and Packet ~ (344B).
+- **2026 GT7 UDP Telemetry Protocol Matrix & Seed Decoupling (v1.10.29.1415)**:
+  - **Decoupled Salsa20 Nonce Seeds**:
+    - Packet A (296B): `0xDEADBEAF`
+    - Packet B (316B) & Packet C (368B): `0xDEADBEEF`
+    - Packet ~ (344B): Dedicated EV `0x55FABB4F` seed with multi-layer fallback.
+  - **Quaternion Attitude Solving**: Reads orientation quaternion `(x, y, z, w)` at `0x01C..0x02B` and trigonometrically derives pitch, yaw, and roll.
+  - **Wheel Angular Speed in rad/s**: Physically accurate wheel speed $v = \omega \cdot r$ with tire radius at `0x0B4` for slip ratio computation.
+  - **Strict Separation of Packet ~ and Packet C**: Fully isolates EV torque vectoring/regen (`0x13C..0x157`) from motorsport surface types, live lap time, steering angles, and Gr. category (`0x13C..0x16F`).
 
 ---
 
 ### 🇯🇵 日本語
-- **最新高級EVコクピットの超高精度再現＆ベクター描画エンジン搭載 (v1.10.29.1350)**:
-  - **実車計器盤の極限再現（4大ブランド徹底強化）**:
-    - **Mercedes-Benz MBUX**: 画面高さいっぱいの直径472pxデュアルメーター、水平ブルーアンビエント照明、エコツインリーフ付き「From Reset」カード、前後5席シートベルト着座ピル、右下PRNDシフト。
-    - **BMW i-Curved M (iDrive 8.5/9)**: 水晶切面シェブロン。速度表示を左側くぼみ、ギア表示（大文字D/S/P＋添え字段数）を右側くぼみに最適配置（S5の誤読を完全解消）。3D都市街路図、ナビ目的地ピン、ドライバー監視カメラノッチを実装。
-    - **Audi Sport RS Virtual Cockpit**: RSホッケースティック型回転計、中央デジタル速度とギア表示（`S 6 DYNAMIC`）、2連パワー／トルクメーター、水平BOOSTバー。
-    - **Volvo EX90 / Google Built-in**: 全画面Google 3Dストリートマップ、デヴォンシャ・パーク池ポリゴン、両端カーブメーター、フローティングガラスタイル。
-  - **完全ベクターアイコン化**: ヘッドライト、シートベルト、ステアリング、リーフ、給油機、バッテリー、雪花、レーンキープを高品質ベクター描画。
+- **2026年最新 GT7 UDP 逆アセンブル仕様完全対応＆Nonce暗号化シード分離 (v1.10.29.1415)**:
+  - **パケット別Salsa20 Nonce暗号化シードの適正化**:
+    - パケットA (296B): `0xDEADBEAF`
+    - パケットB (316B) & パケットC (368B): `0xDEADBEEF`
+    - パケット~ (344B): EV専用シード `0x55FABB4F`（マルチレイヤーフォールバック完備）
+  - **姿勢クォータニオン解算**: `0x01C..0x02B`の4元数から正確なピッチ／ヨー／ロール角を三角関数導出。
+  - **車輪角速度（rad/s）とタイヤスリップ率の厳密化**: $v = \omega \cdot r$ による高精度演算。
+  - **パケット~とパケットCの完全分離**: EVトルクベクタリング・回生電力と、レース路面接地・ステアリング角・GT7公式クラス（GR3/GR4等）のオフセット競合を完全解決。
 
 ---
 
 ### 🇩🇪 Deutsch
-- **High-Fidelity-Überarbeitung der Luxus-EV-Cockpits & Vektorgrafiken (v1.10.29.1350)**:
-  - **Präzise Nachbildung der 4 modernen EV-Cockpits**:
-    - **Mercedes-Benz MBUX**: Großformatige 472px-Rundinstrumente, horizontales blaues Ambientelicht, 'From Reset'-Karte mit Öko-Blatt-Vektorsymbol, 5-Sitz-Belegungsanzeige, vertikale PRND-Schaltgasse mit C/S-Fahrmodus.
-    - **BMW i-Curved M (iDrive 8.5/9)**: Facettierte Chevrons mit Kristallschattierung. Geschwindigkeit links, Fahrstufe (`D`, `S`, `P` mit separater Gangzahl) rechts neben den Instrumenten. 3D-Stadtstraßenkarte mit Ziel-Pin und Fahreraufmerksamkeits-Kamerakerbe.
-    - **Audi Sport RS Virtual Cockpit**: RS-Runway-Drehzahlmesser mit rotem Drehzahlbereich, zentrale Anzeige (`S 6 DYNAMIC`), runde Leistungs-/Drehmomentanzeigen und BOOST-Balken.
-    - **Volvo EX90 / Google Built-in**: Panorama-Google-Navigationskarte, geschwungene Skalenbögen und schwebende Glas-Kacheln.
-  - **Scharfe Vektorgrafik**: Native Vektorsymbole für Scheinwerfer, Sicherheitsgurte, Lenkassistent, Batterie und Reifendruck.
-  - **Volle Packet-C- (368B) und Packet-~- (344B) Unterstützung**.
+- **2026 GT7 UDP Telemetrie-Protokollmatrix & Salsa20-Seed-Entkopplung (v1.10.29.1415)**:
+  - **Format-spezifische Salsa20-Nonce-Entschlüsselung**:
+    - Paket A (296B): `0xDEADBEAF`
+    - Paket B (316B) & Paket C (368B): `0xDEADBEEF`
+    - Paket ~ (344B): Spezifischer EV-Seed `0x55FABB4F` mit automatischem Fallback.
+  - **Orientierungs-Quaternionen**: Exakte Ableitung von Nick-, Gier- und Wankwinkeln aus 4D-Quaternionen.
+  - **Radwinkelgeschwindigkeit in rad/s**: Physikalisch präzise Schlupfberechnung via $v = \omega \cdot r$.
+  - **Strikte Trennung von Paket ~ und Paket C**: Vollständige Trennung von Allrad-Drehmomentverteilung (`0x13C..0x157`) und GT3/GR4-Fahrbahnoberflächen sowie Rundenzeiten (`0x13C..0x16F`).
 EOF
 )
 

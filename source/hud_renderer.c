@@ -1378,17 +1378,28 @@ static void draw_radial_sunburst_rays(SDL_Renderer *r, int cx, int cy, int r_inn
 }
 
 /* Helper: Draw glowing needle with dynamic vibrant trailing arc */
-static void draw_needle_with_trail(SDL_Renderer *r, int cx, int cy, float deg_start, float deg_curr, int length, rgba_t needle_col, rgba_t trail_col) {
+static void draw_needle_with_trail(SDL_Renderer *r, int cx, int cy, float deg_start, float deg_curr, int length, int trail_rad, rgba_t needle_col, rgba_t trail_col) {
     if (deg_curr > deg_start + 1.0f) {
-        draw_segmented_arc(r, cx, cy, length, 6, deg_start, deg_curr, 28, 1.0f, trail_col, rgba(0, 0, 0, 0));
+        draw_segmented_arc(r, cx, cy, trail_rad, 4, deg_start, deg_curr, 32, 1.0f, trail_col, rgba(0, 0, 0, 0));
     }
     float rad = deg_curr * 3.14159265f / 180.0f;
-    int tip_x = cx + (int)(length * cosf(rad));
-    int tip_y = cy + (int)(length * sinf(rad));
-    draw_thick_line(r, cx, cy, tip_x, tip_y, 3, needle_col);
-    fill_circle(r, cx, cy, 8, needle_col);
-    fill_circle(r, cx, cy, 4, rgba(12, 16, 24, 255));
-    fill_circle(r, tip_x, tip_y, 4, needle_col);
+    float c = cosf(rad);
+    float s = sinf(rad);
+    int r_hub = 18;
+    int x0 = cx + (int)(r_hub * c);
+    int y0 = cy + (int)(r_hub * s);
+    int tip_x = cx + (int)(length * c);
+    int tip_y = cy + (int)(length * s);
+
+    /* Slender tapered glowing laser needle with soft bloom */
+    draw_thick_line(r, x0, y0, tip_x, tip_y, 4, rgba(needle_col.r, needle_col.g, needle_col.b, 90));
+    draw_thick_line(r, x0, y0, tip_x, tip_y, 2, needle_col);
+
+    /* Center Hub Cap */
+    fill_circle(r, cx, cy, 18, rgba(8, 12, 18, 255));
+    draw_circle(r, cx, cy, 18, 2, rgba(220, 235, 255, 240));
+    draw_circle(r, cx, cy, 8, 1, needle_col);
+    fill_circle(r, cx, cy, 4, needle_col);
 }
 
 /* Helper: Draw radial tick marks with numerical graduation labels */
@@ -1450,31 +1461,31 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     draw_circle(r, left_cx, cy, dial_rad - 2, 1, mb_glow);
 
     /* Subtle Radial Sunburst Rays */
-    draw_radial_sunburst_rays(r, left_cx, cy, 35, dial_rad - 22, 60, rgba(30, 65, 110, 75));
+    draw_radial_sunburst_rays(r, left_cx, cy, 35, dial_rad - 24, 60, rgba(30, 65, 110, 75));
 
-    /* Graduation Ticks */
-    draw_radial_dial_ticks(r, left_cx, cy, dial_rad - 18, dial_rad - 6, 135.0f, 405.0f, 33, 4, rgba(240, 245, 255, 255), rgba(70, 95, 130, 255));
+    /* Graduation Ticks: outer ticks at perimeter */
+    draw_radial_dial_ticks(r, left_cx, cy, dial_rad - 20, dial_rad - 6, 135.0f, 405.0f, 33, 4, rgba(240, 245, 255, 255), rgba(70, 95, 130, 255));
 
-    /* Numbers: 0, 20, 40, 60, 80, 100, 120, 140, 160 */
+    /* Dynamic Glowing Red Needle & Arc Trail (rendered FIRST so numbers sit on top) */
+    float spd_deg = 135.0f + spd_frac * 270.0f;
+    draw_needle_with_trail(r, left_cx, cy, 135.0f, spd_deg, dial_rad - 20, dial_rad - 6, mb_red, rgba(255, 45, 75, 180));
+
+    /* Numbers: 0, 20, 40, 60, 80, 100, 120, 140, 160 (rendered on top with 184px radius, staggered from ticks/trail) */
     static const int mb_spds[9] = {0, 20, 40, 60, 80, 100, 120, 140, 160};
     for (int i = 0; i < 9; ++i) {
         float deg = 135.0f + (float)i * 33.75f;
         float rad = deg * 3.14159265f / 180.0f;
-        int tx = left_cx + (int)((dial_rad - 36) * cosf(rad));
-        int ty = cy + (int)((dial_rad - 36) * sinf(rad));
+        int tx = left_cx + (int)((dial_rad - 52) * cosf(rad));
+        int ty = cy + (int)((dial_rad - 52) * sinf(rad));
         char lbuf[8];
         snprintf(lbuf, sizeof(lbuf), "%d", mb_spds[i]);
         draw_text_centered(r, lbuf, tx, ty - 6, 2, text_wh);
     }
-    draw_text_centered(r, ui->use_mph ? "mph" : "km/h", left_cx, cy - dial_rad / 2 - 12, 2, text_dim);
-
-    /* Dynamic Glowing Red Needle & Arc Trail */
-    float spd_deg = 135.0f + spd_frac * 270.0f;
-    draw_needle_with_trail(r, left_cx, cy, 135.0f, spd_deg, dial_rad - 26, mb_red, rgba(255, 45, 75, 180));
+    draw_text_centered(r, ui->use_mph ? "mph" : "km/h", left_cx, cy - 80, 2, text_dim);
 
     /* Fuel Gauge at bottom of left dial */
-    int fuel_y = cy + dial_rad - 58;
-    draw_text(r, "⛽ 186 mi", left_cx - 40, fuel_y - 12, 1, text_wh);
+    int fuel_y = cy + dial_rad - 54;
+    draw_text(r, "⛽ 186 mi", left_cx - 40, fuel_y - 10, 1, text_wh);
     draw_text(r, "0", left_cx - 48, fuel_y + 8, 1, text_dim);
     draw_text(r, "1/2", left_cx - 8, fuel_y + 14, 1, text_dim);
     draw_text(r, "1", left_cx + 36, fuel_y + 8, 1, text_dim);
@@ -1487,39 +1498,42 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     draw_circle(r, right_cx, cy, dial_rad - 2, 1, mb_glow);
 
     /* Subtle Radial Sunburst Rays */
-    draw_radial_sunburst_rays(r, right_cx, cy, 35, dial_rad - 22, 60, rgba(30, 65, 110, 75));
+    draw_radial_sunburst_rays(r, right_cx, cy, 35, dial_rad - 24, 60, rgba(30, 65, 110, 75));
 
     /* Graduation Ticks */
-    draw_radial_dial_ticks(r, right_cx, cy, dial_rad - 18, dial_rad - 6, 135.0f, 405.0f, 33, 4, rgba(240, 245, 255, 255), rgba(70, 95, 130, 255));
+    draw_radial_dial_ticks(r, right_cx, cy, dial_rad - 20, dial_rad - 6, 135.0f, 405.0f, 33, 4, rgba(240, 245, 255, 255), rgba(70, 95, 130, 255));
 
-    /* Numbers: 0, 1, 2, 3, 4, 5, 6, 7, 8 */
+    /* Dynamic Glowing Red Needle & Arc Trail (rendered FIRST so numbers sit on top) */
+    float rpm_deg = 135.0f + rpm_frac * 270.0f;
+    draw_needle_with_trail(r, right_cx, cy, 135.0f, rpm_deg, dial_rad - 20, dial_rad - 6, mb_red, rgba(255, 45, 75, 180));
+
+    /* Numbers: 0, 1, 2, 3, 4, 5, 6, 7, 8 (rendered on top with 184px radius, staggered from ticks/trail) */
     for (int i = 0; i <= 8; ++i) {
         float deg = 135.0f + (float)i * 33.75f;
         float rad = deg * 3.14159265f / 180.0f;
-        int tx = right_cx + (int)((dial_rad - 36) * cosf(rad));
-        int ty = cy + (int)((dial_rad - 36) * sinf(rad));
+        int tx = right_cx + (int)((dial_rad - 52) * cosf(rad));
+        int ty = cy + (int)((dial_rad - 52) * sinf(rad));
         char lbuf[8];
         snprintf(lbuf, sizeof(lbuf), "%d", i);
         draw_text_centered(r, lbuf, tx, ty - 6, 2, (i >= 7) ? mb_red : text_wh);
     }
-    draw_text_centered(r, "x1000/min", right_cx, cy - dial_rad / 2 - 12, 1, text_dim);
-
-    /* Dynamic Glowing Red Needle & Arc Trail */
-    float rpm_deg = 135.0f + rpm_frac * 270.0f;
-    draw_needle_with_trail(r, right_cx, cy, 135.0f, rpm_deg, dial_rad - 26, mb_red, rgba(255, 45, 75, 180));
+    draw_text_centered(r, "x1000/min", right_cx, cy - 80, 1, text_dim);
 
     /* POWER & CHARGE readouts at bottom of right dial */
-    int pwr_lbl_y = cy + dial_rad - 52;
+    int pwr_lbl_y = cy + dial_rad - 48;
     draw_text(r, "POWER", right_cx - 48, pwr_lbl_y, 1, text_wh);
     draw_text(r, "CHARGE", right_cx + 12, pwr_lbl_y, 1, mb_cyan);
 
-    /* Vertical Gear Column & Comfort Mode Pill at bottom right */
-    int gear_y = cy + dial_rad - 32;
-    draw_text(r, "R  N  D", 1110, gear_y, 1, text_dim);
-    draw_text(r, (state->current_gear <= 0) ? "P" : "D", 1175, gear_y - 2, 3, text_wh);
-    fill_rect(r, 1205, gear_y - 2, 26, 20, rgba(0, 45, 80, 255));
-    draw_rect(r, 1205, gear_y - 2, 26, 20, 1, mb_cyan);
-    draw_text_centered(r, "C", 1218, gear_y, 2, mb_cyan);
+    /* Vertical Gear Column & Comfort Mode Pill at lower right corner (completely OUTSIDE the dial, 0 collision) */
+    int gr_x = 1206;
+    int gr_y = content_y + content_h - 48;
+    draw_text(r, "R", gr_x, gr_y - 24, 1, text_dim);
+    draw_text(r, "N", gr_x, gr_y - 12, 1, text_dim);
+    draw_text(r, "D", gr_x, gr_y,      1, text_dim);
+    draw_text(r, (state->current_gear <= 0) ? "P" : "D", gr_x + 18, gr_y - 18, 3, text_wh);
+    fill_rect(r, gr_x + 14, gr_y + 10, 28, 18, rgba(0, 45, 80, 255));
+    draw_rect(r, gr_x + 14, gr_y + 10, 28, 18, 1, mb_cyan);
+    draw_text_centered(r, "C", gr_x + 28, gr_y + 12, 1, mb_cyan);
 
     /* ================= CENTER TOP: Speed Limit, ADAS, Digital Speed ================= */
     int mid_cx = SCREEN_W / 2;
@@ -1533,7 +1547,7 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
 
     /* Center Digital Speed */
     int ispd = (int)roundf(speed);
-    draw_7seg_number_centered(r, ispd, 2, false, mid_cx - 8, top_row_y + 4, 34, 48, 7, 6, text_wh, rgba(0, 0, 0, 0));
+    draw_7seg_number_centered(r, ispd, 3, false, mid_cx - 8, top_row_y + 4, 34, 48, 7, 6, text_wh, rgba(0, 0, 0, 0));
     draw_text_centered(r, ui->use_mph ? "mph" : "km/h", mid_cx - 8, top_row_y + 54, 1, text_dim);
 
     /* Steering & Lane Assist Icons */
@@ -1545,7 +1559,7 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     draw_text_centered(r, "!", mid_cx - 9, top_row_y - 7, 1, text_wh);
 
     /* ================= CENTER FLOATING CARD: "From Reset" / "ENTIRE" ================= */
-    int card_w = 270;
+    int card_w = 260;
     int card_h = 138;
     int card_x = mid_cx - card_w / 2;
     int card_y = content_y + 90;
@@ -1557,30 +1571,30 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     char c_buf[32];
     /* Row 1 */
     snprintf(c_buf, sizeof(c_buf), "%.1f mpg", 26.7f);
-    draw_text(r, c_buf, card_x + 22, card_y + 28, 2, text_wh);
+    draw_text(r, c_buf, card_x + 18, card_y + 28, 2, text_wh);
     snprintf(c_buf, sizeof(c_buf), "%.0f mph", 52.0f);
-    draw_text(r, c_buf, card_x + 155, card_y + 28, 2, text_wh);
+    draw_text(r, c_buf, card_x + 150, card_y + 28, 2, text_wh);
 
     /* Row 2 */
     snprintf(c_buf, sizeof(c_buf), "%.0f mi", 540.0f);
-    draw_text(r, c_buf, card_x + 22, card_y + 62, 2, text_wh);
-    draw_text(r, "10:18 h", card_x + 155, card_y + 62, 2, text_wh);
+    draw_text(r, c_buf, card_x + 18, card_y + 62, 2, text_wh);
+    draw_text(r, "10:18 h", card_x + 150, card_y + 62, 2, text_wh);
 
     /* Row 3 (Eco leaf) */
-    draw_text(r, "🌿 9 mi", card_x + 22, card_y + 96, 2, mb_cyan);
-    draw_text(r, "56 min", card_x + 155, card_y + 96, 2, text_wh);
+    draw_text(r, "🌿 9 mi", card_x + 18, card_y + 96, 2, mb_cyan);
+    draw_text(r, "56 min", card_x + 150, card_y + 96, 2, text_wh);
 
     /* ================= CENTER BOTTOM: Seat Occupancy, PARK, Clock ================= */
     int bot_card_y = card_y + card_h + 36;
-    draw_panel(r, card_x - 30, bot_card_y, card_w + 60, 36, rgba(6, 14, 26, 230), rgba(25, 50, 85, 255), 8);
-    draw_text_centered(r, "💺 💺   [x] 💺 💺", mid_cx, bot_card_y + 9, 2, text_dim);
+    draw_panel(r, mid_cx - 95, bot_card_y, 190, 32, rgba(6, 14, 26, 230), rgba(25, 50, 85, 255), 8);
+    draw_text_centered(r, "💺 💺   [x] 💺 💺", mid_cx, bot_card_y + 7, 2, text_dim);
 
     int status_y = content_y + content_h - 22;
-    draw_text(r, "01:58 pm", 350, status_y, 2, text_dim);
-    draw_text(r, "PARK", 520, status_y, 2, mb_red);
-    fill_rect(r, 620, status_y - 2, 22, 20, mb_blue);
-    draw_text_centered(r, "P", 631, status_y, 2, text_wh);
-    draw_text(r, "❄ 24°F", 710, status_y, 2, text_dim);
+    draw_text(r, "01:58 pm", 355, status_y, 2, text_dim);
+    draw_text(r, "PARK", 525, status_y, 2, mb_red);
+    fill_rect(r, 625, status_y - 2, 22, 20, mb_blue);
+    draw_text_centered(r, "P", 636, status_y, 2, text_wh);
+    draw_text(r, "❄ 24°F", 715, status_y, 2, text_dim);
 }
 
 /* 2. BMW CURVED DISPLAY OS 8.5/9 (Symmetrical Dual Chevrons, Full-Width 3D Nav Map) */
@@ -1714,10 +1728,10 @@ static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud
         }
     }
 
-    /* Huge Digital Speed Readout nestled in the crook of the left chevron */
+    /* Huge Digital Speed Readout nestled cleanly in the crook of the left chevron */
     int ispd = (int)roundf(speed);
-    draw_7seg_number_centered(r, ispd, 3, false, 295, cy - 36, 42, 64, 8, 7, text_wh, rgba(0, 0, 0, 0));
-    draw_text_centered(r, ui->use_mph ? "mph" : "km/h", 295, cy + 34, 2, text_wh);
+    draw_7seg_number_centered(r, ispd, 3, false, 350, cy - 36, 40, 60, 8, 7, text_wh, rgba(0, 0, 0, 0));
+    draw_text_centered(r, ui->use_mph ? "mph" : "km/h", 350, cy + 34, 2, text_wh);
 
     /* Left Green Headlight Indicator Icon */
     draw_text(r, "D", 70, cy + 40, 3, bmw_green);
@@ -1797,7 +1811,7 @@ static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud
         }
     }
 
-    /* Huge Gear Indicator P nestled in the crook of the right chevron */
+    /* Huge Gear Indicator nestled cleanly in the crook of the right chevron */
     const char *gear_str = "P";
     if (state->current_gear == 0) gear_str = "R";
     else if (state->current_gear == 1) gear_str = "1";
@@ -1806,12 +1820,12 @@ static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud
         snprintf(g_tmp, sizeof(g_tmp), "%d", state->current_gear);
         gear_str = g_tmp;
     }
-    draw_text_centered(r, gear_str, SCREEN_W - 320, cy - 25, 5, text_wh);
+    draw_text_centered(r, gear_str, SCREEN_W - 350, cy - 25, 5, text_wh);
 
     /* Lower inner tab: ADAPTIVE mode pill */
-    fill_rect(r, SCREEN_W - 360, l_bot_y - 48, 86, 24, rgba(0, 48, 90, 240));
-    draw_rect(r, SCREEN_W - 360, l_bot_y - 48, 86, 24, 1, bmw_cyan);
-    draw_text_centered(r, "ADAPTIVE", SCREEN_W - 317, l_bot_y - 43, 1, bmw_cyan);
+    fill_rect(r, SCREEN_W - 390, l_bot_y - 48, 86, 24, rgba(0, 48, 90, 240));
+    draw_rect(r, SCREEN_W - 390, l_bot_y - 48, 86, 24, 1, bmw_cyan);
+    draw_text_centered(r, "ADAPTIVE", SCREEN_W - 347, l_bot_y - 43, 1, bmw_cyan);
 
     /* ================= BOTTOM STATUS ROW ================= */
     int b_row_y = content_y + content_h - 32;
@@ -1924,7 +1938,7 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
         draw_thick_line(r, tx - 8, ty - 6, tx + 6, ty + 8, 2, text_wh);
         char nbuf[4];
         snprintf(nbuf, sizeof(nbuf), "%d", i);
-        draw_text(r, nbuf, tx - 22, ty - 18, 2, text_wh);
+        draw_text(r, nbuf, tx - 28, ty - 20, 2, text_wh);
     }
 
     /* Horizontal ticks 4, 5, 6, 7, 8 */
@@ -1961,8 +1975,8 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     /* Under Runway: Large Digital Speed */
     int ispd = (int)roundf(speed);
     int center_disp_x = 640;
-    draw_7seg_number_centered(r, ispd, 2, false, center_disp_x, mid_y - 28, 44, 66, 8, 7, text_wh, rgba(0, 0, 0, 0));
-    draw_text_centered(r, ui->use_mph ? "mph" : "km/h", center_disp_x, mid_y + 48, 1, text_dim);
+    draw_7seg_number_centered(r, ispd, 3, false, center_disp_x, mid_y - 28, 42, 64, 8, 7, text_wh, rgba(0, 0, 0, 0));
+    draw_text_centered(r, ui->use_mph ? "mph" : "km/h", center_disp_x, mid_y + 44, 1, text_dim);
 
     /* Gear indicator under speed: R / AUTO */
     const char *gear_str = "R";
@@ -1974,11 +1988,11 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     } else if (state->speed_kmh < 1.0f) {
         gear_str = "P";
     }
-    draw_text_centered(r, gear_str, center_disp_x, mid_y + 70, 3, text_wh);
-    draw_text_centered(r, "AUTO", center_disp_x, mid_y + 98, 1, text_dim);
+    draw_text_centered(r, gear_str, center_disp_x, mid_y + 66, 3, text_wh);
+    draw_text_centered(r, "AUTO", center_disp_x, mid_y + 92, 1, text_dim);
 
     /* Lane Assist Icon */
-    draw_text_centered(r, "/🚗\\", center_disp_x + 150, mid_y + 90, 2, audi_green);
+    draw_text_centered(r, "/🚗\\", center_disp_x + 130, mid_y + 72, 2, audi_green);
 
     /* ================= RIGHT SIDE: Dual Circular Pods (Power & Torque) ================= */
     int pod1_cx = 920;
@@ -2076,7 +2090,7 @@ static void render_ev_volvo_ex(SDL_Renderer *r, const gt7_state_t *state, const 
     draw_text_centered(r, "park", 662, cy + 12, 1, text_wh);
 
     /* Real GT7 Circuit Geometry Overlaid in Center between Pods */
-    draw_track_map_geometry(r, state, 410, map_y + 30, SCREEN_W - 820, map_h - 60, 3, 2, false);
+    draw_track_map_geometry(r, state, 400, map_y + 30, SCREEN_W - 800, map_h - 60, 3, 2, false);
 
     /* Blue Navigation Arrow Cursor */
     int nav_x = 615;
@@ -2090,26 +2104,33 @@ static void render_ev_volvo_ex(SDL_Renderer *r, const gt7_state_t *state, const 
     draw_text(r, "Google", 760, map_y + map_h - 85, 2, rgba(180, 200, 225, 220));
 
     /* ================= LEFT FLOATING POD & SPEEDOMETER ARC ================= */
-    int l_pod_w = 220;
+    int l_pod_w = 210;
     int l_pod_h = 240;
-    int l_pod_x = 135;
+    int l_pod_x = 180;
     int l_pod_y = cy - l_pod_h / 2;
 
-    /* Left Outer Sweeping Speedometer Arc */
-    int l_arc_cx = 120;
-    int l_arc_rad = 205;
-    draw_segmented_arc(r, l_arc_cx, cy, l_arc_rad, 6, 120.0f, 240.0f, 24, 1.0f, rgba(35, 50, 75, 255), rgba(0, 0, 0, 0));
+    /* Left Outer Sweeping Speedometer Arc (convex toward center, well inside left screen margin) */
+    int l_arc_cx = -35;
+    int l_arc_rad = 195;
+    draw_segmented_arc(r, l_arc_cx, cy, l_arc_rad, 5, -55.0f, 55.0f, 24, 1.0f, rgba(35, 50, 75, 255), rgba(0, 0, 0, 0));
     if (spd_frac > 0.02f) {
-        draw_segmented_arc(r, l_arc_cx, cy, l_arc_rad, 8, 120.0f, 120.0f + spd_frac * 120.0f, 24, 1.0f, text_wh, rgba(0, 0, 0, 0));
+        float lit_ang = 55.0f - spd_frac * 110.0f;
+        draw_segmented_arc(r, l_arc_cx, cy, l_arc_rad, 7, lit_ang, 55.0f, 24, 1.0f, text_wh, rgba(0, 0, 0, 0));
     }
 
-    /* Speed Ticks and Numbers: 0, 20, 40, 60, 100, 140, 180, 200 */
-    static const int volvo_spds[8] = {0, 20, 40, 60, 100, 140, 180, 200};
+    /* Speed Ticks and Numbers: 200 (top) down to 0 (bottom), 100% inside visible screen */
+    static const int volvo_spds[8] = {200, 180, 140, 100, 60, 40, 20, 0};
     for (int i = 0; i < 8; ++i) {
-        float deg = 240.0f - (float)i * (120.0f / 7.0f);
+        float deg = -50.0f + (float)i * (100.0f / 7.0f);
         float rad = deg * 3.14159265f / 180.0f;
-        int tx = l_arc_cx + (int)((l_arc_rad - 26) * cosf(rad));
-        int ty = cy + (int)((l_arc_rad - 26) * sinf(rad));
+        int x_in  = l_arc_cx + (int)((l_arc_rad - 12) * cosf(rad));
+        int y_in  = cy + (int)((l_arc_rad - 12) * sinf(rad));
+        int x_out = l_arc_cx + (int)((l_arc_rad + 2) * cosf(rad));
+        int y_out = cy + (int)((l_arc_rad + 2) * sinf(rad));
+        draw_thick_line(r, x_in, y_in, x_out, y_out, (i % 2 == 0) ? 3 : 1, text_wh);
+
+        int tx = l_arc_cx + (int)((l_arc_rad - 24) * cosf(rad));
+        int ty = cy + (int)((l_arc_rad - 24) * sinf(rad));
         char sbuf[8];
         snprintf(sbuf, sizeof(sbuf), "%d", volvo_spds[i]);
         draw_text_right(r, sbuf, tx, ty - 6, 1, text_wh);
@@ -2119,49 +2140,55 @@ static void render_ev_volvo_ex(SDL_Renderer *r, const gt7_state_t *state, const 
     draw_panel(r, l_pod_x, l_pod_y, l_pod_w, l_pod_h, rgba(10, 18, 30, 235), rgba(35, 55, 85, 255), 16);
 
     /* Speed Limit Sign: White rounded square [ 20 ] */
-    fill_rect(r, l_pod_x + 18, l_pod_y + 88, 36, 44, rgba(245, 250, 255, 255));
-    draw_rect(r, l_pod_x + 18, l_pod_y + 88, 36, 44, 2, rgba(20, 20, 20, 255));
-    draw_text_centered(r, "20", l_pod_x + 36, l_pod_y + 98, 3, rgba(20, 20, 20, 255));
+    fill_rect(r, l_pod_x + 16, l_pod_y + 88, 36, 44, rgba(245, 250, 255, 255));
+    draw_rect(r, l_pod_x + 16, l_pod_y + 88, 36, 44, 2, rgba(20, 20, 20, 255));
+    draw_text_centered(r, "20", l_pod_x + 34, l_pod_y + 98, 3, rgba(20, 20, 20, 255));
 
     /* Large Digital Speed */
     int ispd = (int)roundf(speed);
-    draw_7seg_number_centered(r, ispd, 2, false, l_pod_x + 135, l_pod_y + 75, 40, 60, 8, 7, text_wh, rgba(0, 0, 0, 0));
-    draw_text_centered(r, ui->use_mph ? "mph" : "km/h", l_pod_x + 135, l_pod_y + 146, 2, text_dim);
+    int spd_cx = l_pod_x + 125;
+    draw_7seg_number_centered(r, ispd, 3, false, spd_cx, l_pod_y + 75, 38, 58, 8, 7, text_wh, rgba(0, 0, 0, 0));
+    draw_text_centered(r, ui->use_mph ? "mph" : "km/h", spd_cx, l_pod_y + 144, 2, text_dim);
 
     /* ================= RIGHT FLOATING POD & POWER/CHARGE ARC ================= */
-    int r_pod_w = 220;
+    int r_pod_w = 210;
     int r_pod_h = 240;
-    int r_pod_x = SCREEN_W - 135 - r_pod_w;
+    int r_pod_x = SCREEN_W - 180 - r_pod_w;
     int r_pod_y = cy - r_pod_h / 2;
 
     /* Right Outer Sweeping Power Arc */
-    int r_arc_cx = SCREEN_W - 120;
-    int r_arc_rad = 205;
-    draw_segmented_arc(r, r_arc_cx, cy, r_arc_rad, 6, 300.0f, 420.0f, 24, 1.0f, rgba(35, 50, 75, 255), rgba(0, 0, 0, 0));
+    int r_arc_cx = SCREEN_W + 35;
+    int r_arc_rad = 195;
+    draw_segmented_arc(r, r_arc_cx, cy, r_arc_rad, 5, 125.0f, 235.0f, 24, 1.0f, rgba(35, 50, 75, 255), rgba(0, 0, 0, 0));
     float pwr_frac = (charge_pct > 2.0f) ? (charge_pct / 100.0f) : (power_pct / 100.0f);
     if (pwr_frac > 0.02f) {
-        draw_segmented_arc(r, r_arc_cx, cy, r_arc_rad, 8, 360.0f, 360.0f + ((charge_pct > 2.0f) ? -pwr_frac * 50.0f : pwr_frac * 50.0f), 16, 1.0f, text_wh, rgba(0, 0, 0, 0));
+        float lit_ang = 180.0f + ((charge_pct > 2.0f) ? -pwr_frac * 50.0f : pwr_frac * 50.0f);
+        if (charge_pct > 2.0f) {
+            draw_segmented_arc(r, r_arc_cx, cy, r_arc_rad, 7, lit_ang, 180.0f, 16, 1.0f, volvo_green, rgba(0, 0, 0, 0));
+        } else {
+            draw_segmented_arc(r, r_arc_cx, cy, r_arc_rad, 7, 180.0f, lit_ang, 16, 1.0f, text_wh, rgba(0, 0, 0, 0));
+        }
     }
 
     /* Right Glass Pod */
     draw_panel(r, r_pod_x, r_pod_y, r_pod_w, r_pod_h, rgba(10, 18, 30, 235), rgba(35, 55, 85, 255), 16);
 
     /* Green READY Badge */
-    draw_text(r, "READY", r_pod_x + 36, r_pod_y + 24, 2, volvo_green);
+    draw_text(r, "READY", r_pod_x + 32, r_pod_y + 24, 2, volvo_green);
 
     /* Large P and PRND Column */
-    draw_text(r, "P", r_pod_x + 36, r_pod_y + 70, 5, text_wh);
+    draw_text(r, "P", r_pod_x + 32, r_pod_y + 70, 5, text_wh);
 
     static const char *v_prnd[3] = {"R", "N", "D"};
     for (int p = 0; p < 3; ++p) {
-        draw_text(r, v_prnd[p], r_pod_x + 85, r_pod_y + 68 + p * 18, 2, text_dim);
+        draw_text(r, v_prnd[p], r_pod_x + 78, r_pod_y + 68 + p * 18, 2, text_dim);
     }
-    draw_text(r, "- B +", r_pod_x + 65, r_pod_y + 130, 2, text_wh);
+    draw_text(r, "- B +", r_pod_x + 58, r_pod_y + 130, 2, text_wh);
 
     /* Power / Charge Text on Right Side of Pod */
-    draw_text(r, "power", r_pod_x + 155, r_pod_y + 80, 2, text_dim);
-    draw_text(r, "charge", r_pod_x + 155, r_pod_y + 115, 2, text_dim);
-    draw_line(r, r_pod_x + 145, r_pod_y + 104, r_pod_x + 205, r_pod_y + 104, text_wh);
+    draw_text(r, "power", r_pod_x + 145, r_pod_y + 80, 2, text_dim);
+    draw_text(r, "charge", r_pod_x + 145, r_pod_y + 115, 2, text_dim);
+    draw_line(r, r_pod_x + 135, r_pod_y + 104, r_pod_x + 195, r_pod_y + 104, text_wh);
 
     /* ================= TOP STATUS BAR ================= */
     int t_row_y = content_y + 12;
@@ -2621,31 +2648,36 @@ static void render_theme_jdm(SDL_Renderer *r, const gt7_state_t *state, const hu
         int x2 = tcx + (int)(cosf(ang) * (trad - 6));
         int y2 = tcy + (int)(sinf(ang) * (trad - 6));
         draw_thick_line(r, x1, y1, x2, y2, major ? 4 : 2, redzone ? neon_red : white);
-
-        if (major) {
-            char kstr[16];
-            snprintf(kstr, sizeof(kstr), "%d", i / 5);
-            int tx = tcx + (int)(cosf(ang) * (trad - 54));
-            int ty = tcy + (int)(sinf(ang) * (trad - 54)) - 8;
-            draw_text_centered(r, kstr, tx, ty, 3, redzone ? neon_red : neon_blue);
-        }
     }
 
-    draw_7seg_char(r, gear_to_char(state->current_gear), tcx - 38, tcy - 108, 76, 115, 14,
+    /* Needle rendered BEFORE numbers and readouts so dial text remains 100% visible */
+    float rpm_norm = state->engine_rpm / (float)(max_k * 1000);
+    if (rpm_norm < 0.0f) rpm_norm = 0.0f;
+    if (rpm_norm > 1.0f) rpm_norm = 1.0f;
+    float r_ang = (135.0f + rpm_norm * 270.0f) * (float)M_PI / 180.0f;
+    draw_thick_line(r, tcx + (int)(cosf(r_ang) * 20), tcy + (int)(sinf(r_ang) * 20),
+                    tcx + (int)(cosf(r_ang) * (trad - 20)), tcy + (int)(sinf(r_ang) * (trad - 20)), 5, neon_red);
+    fill_circle(r, tcx, tcy, 18, rgba(30, 35, 45, 255));
+    draw_circle(r, tcx, tcy, 18, 3, neon_red);
+
+    /* Major graduation numbers rendered on top */
+    for (int i = 0; i <= total_ticks; i += 5) {
+        float norm = (float)i / (float)total_ticks;
+        float ang = (135.0f + norm * 270.0f) * (float)M_PI / 180.0f;
+        bool redzone = ((float)i / 5.0f * 1000.0f) >= (float)state->rpm_warning;
+        char kstr[16];
+        snprintf(kstr, sizeof(kstr), "%d", i / 5);
+        int tx = tcx + (int)(cosf(ang) * (trad - 54));
+        int ty = tcy + (int)(sinf(ang) * (trad - 54)) - 8;
+        draw_text_centered(r, kstr, tx, ty, 3, redzone ? neon_red : neon_blue);
+    }
+
+    draw_7seg_char(r, gear_to_char(state->current_gear), tcx - 34, tcy - 120, 68, 96, 12,
                    (state->flags & GT7_FLAG_REV_BLINK) ? neon_red : white, rgba(0, 0, 0, 0));
 
     int spd = (int)roundf(ui->use_mph ? state->speed_mph : state->speed_kmh);
     draw_7seg_number_centered(r, spd, 3, false, tcx, tcy + 50, 44, 72, 9, 8, neon_blue, rgba(0, 0, 0, 0));
     draw_text_centered(r, ui->use_mph ? "MPH" : "KM/H", tcx, tcy + 134, 2, white);
-
-    float rpm_norm = state->engine_rpm / (float)(max_k * 1000);
-    if (rpm_norm < 0.0f) rpm_norm = 0.0f;
-    if (rpm_norm > 1.0f) rpm_norm = 1.0f;
-    float r_ang = (135.0f + rpm_norm * 270.0f) * (float)M_PI / 180.0f;
-    draw_thick_line(r, tcx - (int)(cosf(r_ang) * 28), tcy - (int)(sinf(r_ang) * 28),
-                    tcx + (int)(cosf(r_ang) * (trad - 20)), tcy + (int)(sinf(r_ang) * (trad - 20)), 6, neon_red);
-    fill_circle(r, tcx, tcy, 18, rgba(30, 35, 45, 255));
-    draw_circle(r, tcx, tcy, 18, 3, neon_red);
 
     bool shift_lamp = (state->flags & GT7_FLAG_REV_BLINK) != 0;
     fill_circle(r, 830, top_y + 56, 26, shift_lamp ? neon_red : rgba(35, 20, 25, 255));

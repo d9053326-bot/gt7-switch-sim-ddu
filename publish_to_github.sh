@@ -9,58 +9,65 @@ echo "=== 正在為您建立 GitHub 公開儲存庫: $REPO_NAME ==="
 gh repo create "$REPO_NAME" --public --source=. --remote=origin --push --description "PS5 Gran Turismo 7 Sim Racing DDU for Nintendo Switch (Atmosphère Homebrew .nro) with 8 motorsport modes & luxury EV cockpits" || true
 
 echo "=== 正在發布 Release 與上傳 gt7_switch_hud.nro ==="
-gh release create "v1.10.29.0820" dist/switch/gt7_hud/gt7_switch_hud.nro \
-  --title "GT7 Switch Sim-DDU Pro _aw_1.10.29.0820" \
-  --notes "## 🏁 GT7 Switch Sim-DDU Pro _aw_1.10.29.0820
+gh release create "v1.10.29.0839" dist/switch/gt7_hud/gt7_switch_hud.nro \
+  --title "GT7 Switch Sim-DDU Pro _aw_1.10.29.0839" \
+  --notes "## 🏁 GT7 Switch Sim-DDU Pro _aw_1.10.29.0839
 
 ### 🇹🇼 繁體中文
-- **豪華四大品牌最新實車儀表極致擬真重製 (模式 3)**：
-  - **Mercedes-Benz MBUX Classic**：雙類比圓錶直徑擴大至 472px（貼近螢幕高度），外圈放射狀 60 條細緻雷射光芒、發光指針與動態光弧、中央頂部速限牌與數位車速、中央浮動玻璃資訊卡（From Reset / ENTIRE 油耗、里程、時間與節能葉片標籤）、右下 PRND 檔位與天藍色 \`[ C ]\` 模式框、底部獨立狀態列（01:58 pm、PARK、[ P ]、24°F），完美無文字重疊。
-  - **BMW Curved Display OS 8.5/9**：全螢幕深藍透視 3D 城市街道導航網格底圖、經典垂直外側側翼三段式晶體切面括弧 Chevron（< 與 >）、左側嵌入大字速度與正下方置中 \`km/h\`、右側檔位與 \`ADAPTIVE\` 駕駛模式膠囊、底部即時資訊列（⛽ 698 km、10:49、[ 50 ]、🚗、+ 19.0 °C、⚡ 55 km）與賽道幾何軌跡。
-  - **Audi Sport RS Virtual Cockpit**：經典中置 RS Runway（曲棍球棒彎折式）跑道轉速錶（1-3 斜向爬升、4-8 頂部水平展開，7-8 競技紅線）、跑道下方嵌入式數位車速與檔位（2 / AUTO）、左側精緻 Date & time（10:43 AM、Wednesday 11.3.2026、OIL 105 °C）、右側雙圓環即時監控錶（Power % 與 Torque %）搭配底部橫向 BOOST 增壓能量條、頂部燃油里程與電台徽章、底部雙里程與車外溫度。
-  - **Volvo Google Built-in Panoramic Cockpit**：全螢幕全景 3D 導航地圖（Devonshire park 湖泊、街道網格、立體導航藍箭頭、Google 品牌標誌）、左側懸浮深色玻璃速度卡（速限 20 標誌、大字車速 255 km/h）搭配左外圈弧形圓環速度計、右側懸浮深色玻璃控制卡（綠色 READY 標籤、垂直 PRND、- B + 換檔、POWER / CHARGE）搭配右外圈能量弧線、底部雙動能電量/續航條（0 km / 540 km）。
-- **3 次完整迭代驗證**：所有元素皆經截圖檢視，確認比例、層次、對比度與質感完全貼近實車。
-- **純 OLED 零破圖保證**：純黑 OLED 背景 (#000000)，高對比細節，完美呈現液晶儀表頂級質感。
-- **完全支援 Switch 觸控**：無須 Joy-Con 即可單手點擊切換 8 大賽車模式與手動設定 IP。
-- **Switch ARMv8 原生執行檔**：產出 \`gt7_switch_hud.nro\`，放入 microSD 卡 \`switch/gt7_hud/\` 即可直接暢玩！
+- **極致擬真度與字體指針錯開深度優化 (v1.10.29.0839)**：
+  - **數字與指針完美錯開 (零卡住、零重疊)**：
+    - Mercedes-Benz 類比雙圓錶數字調整至 184px 半徑內圈，雷射指針與外圈動態弧線置於 216-230px 外圈刻度，並改為指針先畫、數字與刻度後畫，指針掃過時數字 100% 清晰可辨，絕不卡住指針或遮蔽數字。
+    - BMW i-Curved 數位時速置中於 x=350（3位數完全脫離內側側翼線），與 Chevron 括弧及動能導光帶保持 18px 以上安全淨空；修復 ADAPTIVE 駕駛模式膠囊多層重疊問題。
+    - Audi Sport RS Runway 轉速跑道 1-3 斜向數字增加至 20px 淨空距離；數位車速與檔位完美置中。
+    - Volvo 全景 Google 儀表重構左側速度弧線（角度 -50° 至 +50°），8 組刻度數字（200 下至 0）全部 100% 完整收納於螢幕左邊界內（x=29~123），徹底解決數字出界超出版面的問題。
+    - JDM Defi 模式轉速錶指針與中央檔位數字分層錯開，中心針軸不再壓住檔位數字下緣。
+  - **版面邊界安全淨空保證**：
+    - Mercedes-Benz 右側 PRND 與 [ C ] 模式完全移至轉速錶外側右下角，白色錶圈不再切過檔位文字，與右邊界保留 25px 安全距離。
+    - 中央座椅佔位圖形縮短至 190px，與左右圓錶保留 64px 空間。
+- **全觸控操作與純 OLED 顯示**：完全支援電容全觸控切換主題與手動設定 IP，極致純黑背景 (#000000)。
+- **Switch ARMv8 原生執行檔**：提供 \`gt7_switch_hud.nro\`，放入 microSD 卡 \`switch/gt7_hud/\` 即可直接暢玩！
 
 ---
 
 ### 🇬🇧 English
-- **OEM Cluster Production Realism Overhaul (Mode 3)**:
-  - **Mercedes-Benz MBUX Classic**: Enlarged 472px diameter dual dials (~screen height), 60 radial laser sunburst rays, glowing red needles with dynamic outer trail arcs, top limit badge and digital speed, center floating glass card ('From Reset' / 'ENTIRE' with mpg, mph, mi, time, eco leaf), bottom status row ('01:58 pm  PARK  [ P ]  ❄ 24°F'), and vertical gear PRND with cyan \`[ C ]\` mode box.
-  - **BMW Curved Display OS 8.5/9**: Full-screen deep blue 3D perspective city/circuit grid map, symmetrical 3-segment crystalline faceted chevrons with vertical outer flank, speed digits with \`km/h\` centered cleanly below, gear & \`ADAPTIVE\` pill, bottom indicators (⛽ 698 km, 10:49, [ 50 ], 🚗, + 19.0 °C, ⚡ 55 km) and framed track telemetry.
-  - **Audi Sport RS Virtual Cockpit**: Central iconic RS Runway (hockey stick) tachometer (slanted 1-3, horizontal 4-8 with redline on 7-8), under-runway digital speed and gear (2 / AUTO), left date/time/oil temp, right dual circular pods (Power % and Torque %) with horizontal BOOST bar, top fuel & radio info, bottom odometer & ambient temp.
-  - **Volvo Google Built-in Panoramic Cockpit**: Full-screen 3D panoramic navigation map (lake, road grid, blue navigation arrowhead, Google logo), floating left dark glass pod ([ 20 ] limit, digital speed 255 km/h) with outer curved speedometer arc, floating right dark glass pod (READY green badge, vertical PRND, - B +, power/charge) with outer curved power/regen arc, bottom dual battery/fuel bars.
-- **Triple-Iteration Quality Assurance**: Exhaustively tested and visually inspected via SDL2 render captures.
-- **Pure OLED Contrast**: Zero clipping, deep black backgrounds (#000000), and crisp antialiased rendering.
-- **100% Touchscreen Operation**: Change modes and configure IP directly via Switch touch screen.
-- **Pre-compiled Binary**: Ready-to-run \`gt7_switch_hud.nro\` for Atmosphère CFW.
+- **Visual Staggering & Text Boundary Optimization (v1.10.29.0839)**:
+  - **Numbers Staggered from Needle & Pointers (Zero Collisions)**:
+    - Mercedes-Benz dial numbers offset to inner 184px radius; laser needles and outer trailing arcs placed on outer 216-230px perimeter. Needles rendered underneath dial labels so graduation numbers remain 100% legible during needle sweeps.
+    - BMW digital speed moved to x=350 (digits 18px+ clear of chevron flank); removed duplicate ADAPTIVE pill overlap.
+    - Audi RS Runway diagonal tick numbers given 20px clear margin; digital speed and gear centered with 3 digits.
+    - Volvo speedometer arc geometry recalculated (-50° to +50°); all 8 scale numbers (200 down to 0) strictly contained within screen boundaries (x=29~123).
+    - JDM Defi needle hub separated from gear readout with clean vertical margin.
+  - **Canvas Edge Containment**:
+    - Mercedes-Benz PRND and [ C ] gear pill moved outside the dial into the lower right corner with zero circle clipping.
+    - Center occupancy panel narrowed with 64px clearance from dial circles.
+- **100% Touchscreen & Pure OLED Contrast**: Full touch navigation, zero clipping, ready-to-run Switch Homebrew.
 
 ---
 
 ### 🇯🇵 日本語
-- **最新実車メーターデザインの超高精度再現（モード3）**:
-  - **Mercedes-Benz MBUX Classic**: 直径472pxの巨大2眼アナログメーター、60本の放射状レーザーサンバースト目盛り、発光レッド指針＆動的アウタートレイル、中央上部制限速度＆デジタルスピード、中央フローティングガラスカード（From Reset / ENTIRE 燃費・走行距離・時間・エコリーフ）、下部ステータスバー（01:58 pm、PARK、[ P ]、❄ 24°F）、右下PRNDとシアン\`[ C ]\`モード。
-  - **BMW Curved Display OS 8.5/9**: フルスクリーン3Dパースペクティブ都市グリッドマップ、垂直アウターフランジ付き3分割クリスタルファセットシェブロン（< と >）、速度数値＆中央配置\`km/h\`、ギア＆\`ADAPTIVE\`ピル、下部ステータス（⛽ 698 km、10:49、[ 50 ]、🚗、+ 19.0 °C、⚡ 55 km）。
-  - **Audi Sport RS Virtual Cockpit**: 伝統の中置RSランウェイ（ホッケースティック型）タコメーター（1-3斜め、4-8水平バー、7-8レッドゾーン）、ランウェイ下部デジタル速度＆ギア（2 / AUTO）、左側日時＆油温表示（OIL 105 °C）、右側デュアル丸型ポッド（Power % & Torque %）＆BOOSTバー、上部燃料＆ラジオ情報、下部オドメーター。
-  - **Volvo Google Built-in Panoramic Cockpit**: フルスクリーンパノラマ3Dナビゲーションマップ（Devonshire park、道路グリッド、青色ナビ矢印、Googleロゴ）、左側フローティングガラス速度ポッド（制限20標識、255 km/h）＆外周スピードメーター弧、右側フローティングガラス制御ポッド（READY緑バッジ、PRND、- B +、power/charge）＆外周エネルギー弧、下部デュアルバッテリー/航続バー。
-- **3段階の反復検証完了**: 視覚キャプチャにより実車写真と細部まで照合・最適化済み。
-- **純粋なOLED黒表示**: #000000の完全黒背景で最高峰のコントラストを実現。
-- **完全タッチスクリーン対応**: Switch画面のタッチのみで全機能・全モードを快適に操作可能。
-- **Switch用 NRO バイナリ同梱**: Atmosphère環境で \`switch/gt7_hud/\` に配置するだけで即起動可能。
+- **指針と数値の段差配置＆文字はみ出し防止の最適化 (v1.10.29.0839)**:
+  - **指針と数字の完全分離（重なり・引っかかり解消）**:
+    - Mercedes-Benzのメーター数値を内径184pxへオフセット。指針を数値の下層に描画することで針通過時も数字が完全に視認可能。
+    - BMWの時速数値をx=350へ配置（シェブロン枠との干渉を完全排除）。重複していたADAPTIVEピルを解消。
+    - Audi RSランウェイの斜め目盛り数値を20px外側にオフセット。
+    - Volvoのスピードメーター弧を再計算し、200から0までの全8目盛数値が画面左端（x=29〜123）に100%完全に収まるよう修正。
+    - JDM Defiメーターの針軸と中央ギア数字の重なりを解消。
+  - **画面境界の安全性確保**:
+    - Mercedes-BenzのPRNDおよび[ C ]をメーター外側右下へ配置し、円周線との交差を解消。
+- **Switch用 NRO バイナリ同梱**: Atmosphère環境で即起動可能。
 
 ---
 
 ### 🇩🇪 Deutsch
-- **Hochpräzise Nachbildung aktueller Serienfahrzeug-Cockpits (Modus 3)**:
-  - **Mercedes-Benz MBUX Classic**: Gewaltige 472-px-Rundinstrumente (~Bildschirmhöhe), 60 radiale Laser-Sonnenstrahlen-Skalenstriche, leuchtende rote Nadeln mit Lichtschweif-Bögen, mittige Geschwindigkeits- und Tempolimit-Anzeige, schwebende Glaskarte ('From Reset' / 'ENTIRE' mit mpg, mph, mi, Zeit, Eco-Blatt), untere Statusleiste ('01:58 pm  PARK  [ P ]  ❄ 24°F') und Gangwahl PRND mit cyanfarbenem \`[ C ]\`-Modus.
-  - **BMW Curved Display OS 8.5/9**: Vollbild-3D-Perspektiven-Stadtplan, symmetrische 3-teilige kristalline Facetten-Chevrons mit vertikalen Außenflanken, digitale Geschwindigkeitsanzeige mit zentriertem \`km/h\`, Gang & \`ADAPTIVE\`-Pille, untere Statusanzeigen (⛽ 698 km, 10:49, [ 50 ], 🚗, + 19.0 °C, ⚡ 55 km) und telemetrische Streckengrafik.
-  - **Audi Sport RS Virtual Cockpit**: Zentraler ikonischer RS-Runway-Drehzahlmesser (Hockeyschläger-Form: 1-3 schräg ansteigend, 4-8 horizontal mit rotem Drehzahlbereich bei 7-8), integrierte Digitalgeschwindigkeit & Gang (2 / AUTO) unter dem Runway, Datum/Uhrzeit/Öltemperatur links, doppelte RS-Rundinstrumente rechts (Power % und Torque %) mit BOOST-Leiste, obere Kraftstoff- & Radioanzeige, unterer Kilometerzähler & Außentemperatur.
-  - **Volvo Google Built-in Panoramic Cockpit**: Vollbild-3D-Panoramakarte (See 'Devonshire park', Straßennetz, blauer Navigationspfeil, Google-Schriftzug), linkes schwebendes Dunkelglas-Pod (Tempolimit 20, 255 km/h) mit äußerem Tacho-Bogen, rechtes schwebendes Dunkelglas-Pod (READY, PRND, - B +, power/charge) mit äußerem Leistungs-/Rekuperationsbogen, doppelte Batterie-/Reichweitenanzeige unten.
-- **Dreistufige iterative Verifikation**: Umfangreich via SDL2-Rendering getestet und mit den Originalfotos abgeglichen.
-- **Reines OLED-Schwarz**: Maximaler Kontrast (#000000) ohne Textüberschneidungen.
-- **100% Touchscreen-Unterstützung**: Alle Modi und IP-Einstellungen direkt per Touch auf der Nintendo Switch bedienbar.
+- **Staffelung von Zahlen & Zeigern sowie Behebung von Textüberläufen (v1.10.29.0839)**:
+  - **Keine Zeigerkollisionen & saubere Trennung**:
+    - Mercedes-Benz Skalenzahlen auf 184px Innenradius verlegt; Nadeln unter den Zahlen gerendert für perfekte Lesbarkeit bei Zeigerdurchgang.
+    - BMW Geschwindigkeit auf x=350 zentriert mit 18px+ Abstand zum Chevron; doppelte ADAPTIVE-Box entfernt.
+    - Audi RS Runway Zahlen mit 20px Sicherheitsabstand zur Diagonale angeordnet.
+    - Volvo Tacho-Geometrie neuberechnet; alle 8 Zahlen (200 bis 0) liegen sauber innerhalb des Bildschirms (x=29~123).
+    - JDM Defi Nadelachse kollidiert nicht mehr mit der Ganganzeige.
+  - **Sichere Bildschirrgrenzen**:
+    - Mercedes-Benz PRND und [ C ]-Modus in die untere rechte Ecke außerhalb der Rundinstrumente verlegt.
 - **Vorkompilierte Switch-Binärdatei**: \`gt7_switch_hud.nro\` für Atmosphère CFW enthalten."
 
 echo "=== 發布完成！ ==="

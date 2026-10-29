@@ -1,5 +1,5 @@
 # GT7 Switch Sim-DDU Pro (English)
-**Version: `_aw_1.10.29.0820`**
+**Version: `_aw_1.10.29.0839`**
 
 [繁體中文](README_ZH.md) | [日本語](README_JA.md) | [Deutsch](README_DE.md)
 

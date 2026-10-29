@@ -46,7 +46,7 @@ cat > main.json <<'JSON'
 }
 JSON
 npdmtool main.json exefs/main.npdm
-nacptool --create 'GT7 Sim-DDU Pro' 'GT7 SimRacing' '_aw_1.10.29.0820' control/control.nacp
+nacptool --create 'GT7 Sim-DDU Pro' 'GT7 SimRacing' '_aw_1.10.29.0839' control/control.nacp
 cp ../icon.jpg control/icon_AmericanEnglish.dat
 cp ../icon.jpg logo/NintendoLogo.png 2>/dev/null || true
 echo -n > logo/StartupMovie.gif

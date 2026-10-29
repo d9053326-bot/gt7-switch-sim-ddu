@@ -88,8 +88,6 @@ NOTES=$(cat << 'EOF'
   - Reines OLED-Schwarz (`#000000`) ohne Textüberlappungen auf allen 13 Bildschirmmodi.
 EOF
 )
-EOF
-)
 
 echo "=== 正在更新 Release $TAG_NAME ==="
 gh release edit "$TAG_NAME" \

@@ -275,6 +275,7 @@ int main(int argc, char *argv[]) {
             prev_auto = client.auto_detect;
         }
 
+        client.active_theme_hint = (int)ui.theme;
         gt7_update(&client, &state, now_ms);
 
         if (!state.connected && state.demo_mode) {

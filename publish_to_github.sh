@@ -9,55 +9,80 @@ echo "=== 正在為您建立 GitHub 公開儲存庫: $REPO_NAME ==="
 gh repo create "$REPO_NAME" --public --source=. --remote=origin --push --description "PS5 Gran Turismo 7 Sim Racing DDU for Nintendo Switch (Atmosphère Homebrew .nro) with 8 motorsport modes & luxury EV cockpits" || true
 
 echo "=== 正在發布 Release 與上傳 gt7_switch_hud.nro ==="
-gh release create "v1.10.29.0950" dist/switch/gt7_hud/gt7_switch_hud.nro \
-  --title "GT7 Switch Sim-DDU Pro _aw_1.10.29.0950" \
-  --notes "## 🏁 GT7 Switch Sim-DDU Pro _aw_1.10.29.0950
+gh release create "v1.10.29.1350" dist/switch/gt7_hud/gt7_switch_hud.nro \
+  --title "GT7 Switch Sim-DDU Pro _aw_1.10.29.1350 (Luxury EV Cockpit High-Fidelity & Vector Graphics)" \
+  --notes "## 🏁 GT7 Switch Sim-DDU Pro _aw_1.10.29.1350
+
+### 🌟 實車極致還原：Benz, BMW, Audi, Volvo 四大純電/旗艦座艙細節大躍進
+針對使用者提供的最新實車操作畫面，進行逐像素細節比對與三大輪次迭代優化：
+1. **Mercedes-Benz MBUX EQ Mode**：
+   - 經典超大雙圓儀表（直徑達 472px，幾乎充滿螢幕垂直高度），數字與指針完美分層，指針運行零遮擋。
+   - 中央地平線湛藍氣氛燈光暈（Ambient Horizon Aura），極致還原賓士座艙夜間科技感。
+   - 中央「From Reset」磨砂卡片精緻化：整合即時油耗/電耗、行駛里程、即時單圈時間，並在純電里程中央繪製綠色雙葉 Eco 向量圖示。
+   - 新增下方乘員安全帶監測膠囊列（Seat Occupancy Pill），展示前後五座安全帶帶扣狀態。
+   - 右側垂直排檔列（R / N / D）搭配加大檔位與藍光 \`[ C ]\` / 紅光 \`[ S ]\` 駕駛模式膠囊。
+2. **BMW i-Curved M (iDrive 8.5/9)**：
+   - 多層次水晶切面導光雙箭矢（Chevrons），外框湛藍、內襯深海藍漸層。
+   - **核心排版校正**：將超大數位車速（\`222 KM/H\`）精準移至左箭矢右側彎角處；將超大檔位（\`D\` / \`S\` / \`P\`）與獨立檔位數字移至右箭矢左側彎角處，徹底解決 \`S5\` 誤讀為 \`55\` 的問題！
+   - 中央 3D 城市街道導航網格：白藍相間的交叉路口、立體建築透視、前進導航三角箭頭與真實 GT7 賽道雷達無縫結合。
+   - 頂部加入 BMW 經典駕駛專注度監控攝影機梯形凹槽（Sensor Cluster Notch）。
+   - 底部狀態列全面升級向量圖示：油槍圖示＋燃油進度條、時鐘、歐盟紅圈速限 \`50\`、車頂俯視圖＋安全帶警示、室外溫度、高壓電池圖示＋電量進度條。
+3. **Audi Sport RS Virtual Cockpit (e-tron GT RS)**：
+   - 經典 RS 曲棍球道轉速計（Runway Tachometer），1-3 階斜向、4-8 階橫向，7-8 轉紅線區高亮，白光轉速即時充盈。
+   - 梯形跑道中心：超大數位車速，下方清晰顯示大字號檔位（如 \`R\`、\`S 6\`、\`D 4\`）與 \`DYNAMIC\` / \`AUTO\` 模式，兩側環抱綠色車道維持輔助箭矢。
+   - 右側雙圓形性能錶（Power % 與 Torque %）搭配下方水平 \`MIN ──── BOOST ──── MAX\` 渦輪增壓條。
+   - 頂部狀態列整合綠色大燈向量圖示、紅光 \`(P)\` 電子手煞車、紅底油量徽章、電台廣播 \`((o)) 2GB 873\`。
+4. **Volvo EX90 / Polestar Scandinavian Cockpit (Google Built-in)**：
+   - 全幅滿版深藍 Google 3D 衛星街道地圖，包含住宅路網、彎道街區、藍色地標公園（Devonshire park）及前進導航箭頭。
+   - 左右兩側弧形刻度錶（左側車速 0..200 km/h，右側動力/回充）。
+   - 兩側懸浮玻璃磁貼：左側容納速限 \`20\` 標誌與大型車速；右側容納綠色 \`READY\`、直立式排檔（P/R/N/D 與回充單踏板 \`- B +\`）及水平指針。
+   - 頂部與底部全面替換為高品質向量圖示（大燈、車道維持、安全帶、俯視車身、電池與油槍）。
+
+---
 
 ### 🇹🇼 繁體中文
-- **豪華電車儀表即時檔位連動與全動態遙測深化優化 (v1.10.29.0950)**：
-  - **Mercedes-Benz MBUX EQ 經典雙環儀表**：
-    - 右下角檔位直列矩陣動態高亮當前檔位（R 琥珀黃、N 白、D 白），大字型顯示 \`P\`、\`R\`、\`N\`、\`D<檔位>\`（如 \`D4\`）。
-    - 油門深度 > 75% 時，右下角駕駛模式膠囊動態切換為紅色 \`[ S ]\`（Sport 運動模式），一般巡航自動切換為水藍色 \`[ C ]\`（Comfort 舒適模式）。
-    - 中央「From Reset」旅程電腦全動態化：即時油量/電量（L）、真實與極速時速、當圈行駛里程、動態計時器、剩餘里程 \`RANGE <km/mi>\` 與賽事名次 \`POS <名次>/<總車數>\`。
-    - 底部狀態列在車輛行駛中動態顯示綠色 \`READY LAP <圈數>\`，停車時自動顯示紅色 \`PARK [ P ]\`。
-  - **BMW Curved Display i-Curved M 弧形儀表 (OS 8.5/9)**：
-    - 右側 Chevron 內角凹折處大字型即時顯示 \`P\`、\`R\`、\`N\`、\`D<檔位>\`、\`S<檔位>\`（全油門時顯示熱血運動紅字，如 \`S5\`）。
-    - 智慧行車模式膠囊動態連動：減速回充顯示綠色 \`REGEN\`、大腳油門顯示紅色 \`SPORT\`、停車顯示 \`PARK\`、巡航顯示水藍色 \`ADAPTIVE\`。
-    - 頂部 Chevron 標籤與刻度數字垂直間距加大至 42px，徹底避免 \`KM/H\` 與 \`120\`、\`POWER %\` 與 \`100\` 接觸。
-    - 底部油量與高壓電池即時連動 GT7 遙測數據與動態指示條。
-  - **Audi Sport RS Virtual Cockpit (RS Runway 跑道儀表)**：
-    - 跑道轉速錶下方大字型檔位動態顯示 \`P\`、\`R\`、\`N\`、\`D <檔位>\`、\`S <檔位>\`；並動態切換紅字 \`DYNAMIC\` 與一般 \`AUTO\`。
-    - 頂部紅色油量膠囊 \`[D] <里程> km\` 與加油槍圖示動態連動，左側機油溫度連動即時 \`OIL <溫度>°C\` 與漸進條。
-    - 底部里程表動態計算累計行駛總里程與當次單圈里程。
-  - **Volvo EX90 / Google Built-in 全景式座艙**：
-    - 右側浮空玻璃艙大字型檔位動態切換 \`P\`、\`R\`、\`N\`、\`D\`，右上角高亮顯示檔位數字（如 \`D^5\`）。
-    - \`R N D\` 直列排檔柱即時高亮當前運作檔位，煞車回充時 \`- B +\` 燈號自動點亮青綠色。
-    - 底部右側雙能源資訊採用專屬繪製電池圖示 \`[BAT] ── <里程> km\` 與油箱圖示 \`[GAS] ── <里程> km\`，完全消除亂碼或超出邊界。
-- **全觸控操作與純 OLED 顯示**：支援 Switch 電容全觸控切換主題與手動設定 IP，極致純黑背景 (#000000)。
-- **Switch ARMv8 原生執行檔**：提供 \`gt7_switch_hud.nro\`，放入 microSD 卡 \`switch/gt7_hud/\` 即可直接暢玩！
+- **旗艦座艙細節迭代與向量圖形引擎全面升級 (v1.10.29.1350)**：
+  - **全新向量圖標繪製模組**：徹底淘汰易造成亂碼的 UTF-8 多位元組字元，採用純 SDL 向量幾何繪製大燈、安全帶、方向盤輔助、雙葉節能標章、加油機、電池、雪花溫度與車道維持圖示，呈現 100% 銳利無瑕畫質。
+  - **大錶面高視覺震撼**：左右類比指針表直徑擴展至接近螢幕高度（472px），留出中央放置精美資訊卡片與導航，指針與數字分層錯開，杜絕任何遮擋。
+  - **完整相容 GT7 Packet C (368B) & Packet ~ (344B)**：
+    - 即時回充與輸出功率（kW）動態顯示。
+    - 4 輪獨立馬達扭力向量（AWD Split）。
+    - 輪胎路面材質即時偵測（柏油/路緣石/泥地）與組別標籤。
 
 ---
 
 ### 🇬🇧 English
-- **Live Transmission Gear Telemetry & Full Dynamic Readout Optimization (v1.10.29.0950)**:
-  - **Mercedes-Benz MBUX EQ Classic Dual-Dial Cockpit**:
-    - Right vertical PRND selector matrix dynamically highlights active transmission state (R amber, N white, D white); prominent gear readout shows \`P\`, \`R\`, \`N\`, \`D<gear>\` (e.g. \`D4\`).
-    - Dynamic drive mode pill shifts to red \`[ S ]\` (Sport mode) when throttle > 75%, returning to cyan \`[ C ]\` (Comfort mode) during cruising.
-    - Central \"From Reset\" trip card displays real-time fuel volume (L), current & peak speed, trip distance, live lap timer, remaining dynamic range, and race standing \`POS <pos>/<cars>\`.
-    - Bottom status row displays green \`READY LAP <lap>\` when in motion and shifts to red \`PARK [ P ]\` when vehicle is stationary.
-  - **BMW Curved Display i-Curved M (OS 8.5/9)**:
-    - Right chevron crook displays dynamic gear \`P\`, \`R\`, \`N\`, \`D<gear>\`, or \`S<gear>\` in BMW M motorsport red under heavy acceleration (e.g. \`S5\`).
-    - Dynamic driving mode pill responds in real time: green \`REGEN\` under braking, red \`SPORT\` under full throttle, \`PARK\` when stopped, and cyan \`ADAPTIVE\` during cruise.
-    - Chevron top header margins expanded to 42px vertical clearance to eliminate any collision between \`KM/H\` / \`120\` and \`POWER %\` / \`100\`.
-    - Dynamic fuel & high-voltage battery range bars wired directly to GT7 live telemetry.
-  - **Audi Sport RS Virtual Cockpit**:
-    - Digital gear readout under RS Runway shows \`P\`, \`R\`, \`N\`, \`D <gear>\`, \`S <gear>\` with dynamic \`DYNAMIC\` (red) vs \`AUTO\` status.
-    - Dynamic red fuel range badge \`[D] <range> km\` with custom fuel pump glyph; dynamic oil temperature bar tracking live GT7 engine oil temps.
-    - Bottom odometer dynamically tracks cumulative distance and current lap trip distance.
-  - **Volvo EX90 / Google Built-in Panoramic Cockpit**:
-    - Right floating glass pod displays dynamic transmission gear \`P\`, \`R\`, \`N\`, \`D\`, with active cyan gear superscript (e.g. \`D^5\`).
-    - \`R N D\` column dynamically highlights active gear; \`- B +\` one-pedal regen indicator illuminates vibrant green during braking.
-    - Bottom dual energy status features custom-drawn vector battery icon \`[BAT] ── <range> km\` and fuel icon \`[GAS] ── <range> km\`.
+- **Luxury EV Cockpit High-Fidelity & Vector Graphics Overhaul (v1.10.29.1350)**:
+  - **Ultra-Detailed Mimicking of 4 Modern Luxury Cockpits**:
+    - **Mercedes-Benz MBUX**: Full-height 472px dials, ambient horizon cyan glow, 'From Reset' frosted card with eco leaf vector icon, 5-seat occupancy pill, and bottom-right PRND column with C/S mode badge.
+    - **BMW i-Curved M (iDrive 8.5/9)**: Precision chevron redesign with crystal facets. Digital speed (`222 KM/H`) repositioned to left inner nook; gear (`D`, `S`, `P`) with independent gear superscript repositioned to right inner nook. 3D city street map with destination pin and driver-monitoring camera notch.
+    - **Audi Sport RS Virtual Cockpit**: RS runway hockey-stick tachometer with redline fill, central speed and dynamic gear (`S 6 DYNAMIC`), dual Power/Torque dials, horizontal BOOST bar, and oil temp.
+    - **Volvo EX90 / Google Built-in**: Full-bleed panoramic dark navy Google map with Devonshire Park polygon, curved speed/power arcs, and floating glass tiles.
+  - **Vector Graphics Primitives**: 100% custom-drawn vector icons for headlights, seatbelts, steering wheel assist, eco leaves, fuel pumps, batteries, snowflakes, and ADAS lane keeping.
+  - **Telemetry Matrix Compatibility**: Full support for Packet C (368B) and Packet ~ (344B).
+
+---
+
+### 🇯🇵 日本語
+- **最新高級EVコクピットの超高精度再現＆ベクター描画エンジン搭載 (v1.10.29.1350)**:
+  - **実車計器盤の極限再現（4大ブランド徹底強化）**:
+    - **Mercedes-Benz MBUX**: 画面高さいっぱいの直径472pxデュアルメーター、水平ブルーアンビエント照明、エコツインリーフ付き「From Reset」カード、前後5席シートベルト着座ピル、右下PRNDシフト。
+    - **BMW i-Curved M (iDrive 8.5/9)**: 水晶切面シェブロン。速度表示を左側くぼみ、ギア表示（大文字D/S/P＋添え字段数）を右側くぼみに最適配置（S5の誤読を完全解消）。3D都市街路図、ナビ目的地ピン、ドライバー監視カメラノッチを実装。
+    - **Audi Sport RS Virtual Cockpit**: RSホッケースティック型回転計、中央デジタル速度とギア表示（\`S 6 DYNAMIC\`）、2連パワー／トルクメーター、水平BOOSTバー。
+    - **Volvo EX90 / Google Built-in**: 全画面Google 3Dストリートマップ、デヴォンシャ・パーク池ポリゴン、両端カーブメーター、フローティングガラスタイル。
+  - **完全ベクターアイコン化**: ヘッドライト、シートベルト、ステアリング、リーフ、給油機、バッテリー、雪花、レーンキープを高品質ベクター描画。
+
+---
+
+### 🇩🇪 Deutsch
+- **High-Fidelity-Überarbeitung der Luxus-EV-Cockpits & Vektorgrafiken (v1.10.29.1350)**:
+  - **Präzise Nachbildung der 4 modernen EV-Cockpits**:
+    - **Mercedes-Benz MBUX**: Großformatige 472px-Rundinstrumente, horizontales blaues Ambientelicht, 'From Reset'-Karte mit Öko-Blatt-Vektorsymbol, 5-Sitz-Belegungsanzeige, vertikale PRND-Schaltgasse mit C/S-Fahrmodus.
+    - **BMW i-Curved M (iDrive 8.5/9)**: Facettierte Chevrons mit Kristallschattierung. Geschwindigkeit links, Fahrstufe (`D`, `S`, `P` mit separater Gangzahl) rechts neben den Instrumenten. 3D-Stadtstraßenkarte mit Ziel-Pin und Fahreraufmerksamkeits-Kamerakerbe.
+    - **Audi Sport RS Virtual Cockpit**: RS-Runway-Drehzahlmesser mit rotem Drehzahlbereich, zentrale Anzeige (`S 6 DYNAMIC`), runde Leistungs-/Drehmomentanzeigen und BOOST-Balken.
+    - **Volvo EX90 / Google Built-in**: Panorama-Google-Navigationskarte, geschwungene Skalenbögen und schwebende Glas-Kacheln.
+  - **Scharfe Vektorgrafik**: Native Vektorsymbole für Scheinwerfer, Sicherheitsgurte, Lenkassistent, Batterie und Reifendruck.
+  - **Volle Packet-C- (368B) und Packet-~- (344B) Unterstützung**."
 - **Nintendo Switch Native ARMv8 Binary**: Ready-to-use \`gt7_switch_hud.nro\` included for Atmosphère homebrew.
 
 ---

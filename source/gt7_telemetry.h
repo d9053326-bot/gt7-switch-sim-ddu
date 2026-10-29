@@ -13,7 +13,7 @@ extern "C" {
 #define GT7_RECV_PORT 33740
 #define GT7_MAGIC_G7S0 0x47375330U
 
-#define GT7_APP_VERSION "_aw_1.10.29.0950"
+#define GT7_APP_VERSION "_aw_1.10.29.1350"
 
 #define GT7_TRACE_LEN 160
 #define GT7_TRACK_PTS 500
@@ -25,6 +25,16 @@ typedef enum {
     GT7_CIRCUIT_LE_MANS     = 2, /* Circuit de la Sarthe High-Speed */
     GT7_CIRCUIT_COUNT       = 3
 } gt7_circuit_preset_t;
+
+/* Heartbeat Negotiation & Telemetry Protocol Modes */
+typedef enum {
+    GT7_HEARTBEAT_AUTO      = 0, /* Smart Adaptive: '~' for EV Cockpit, 'C' for Motorsport, fallback to 'A' */
+    GT7_HEARTBEAT_PKT_C     = 1, /* Force Packet C (368 Bytes, Heartbeat 'C') - Surface type, Category, Lap MS */
+    GT7_HEARTBEAT_PKT_TILDE = 2, /* Force Packet ~ (344 Bytes, Heartbeat '~') - EV Torque Vectors & Regen kW */
+    GT7_HEARTBEAT_PKT_A     = 3, /* Force Packet A (296 Bytes, Heartbeat 'A') - Baseline GT7 Telemetry */
+    GT7_HEARTBEAT_PKT_B     = 4, /* Force Packet B (316 Bytes, Heartbeat 'B') - 6-DoF Inertial Acceleration */
+    GT7_HEARTBEAT_COUNT     = 5
+} gt7_heartbeat_mode_t;
 
 /* Simulator Interface Flags (Offset 0x8E) */
 typedef enum {
@@ -152,6 +162,40 @@ typedef struct {
     char circuit_name[48];
     float track_length_km;
 
+    /* Extended GT7 Telemetry Channels (Packet B, Packet ~, Packet C) */
+    size_t rx_packet_len;    /* Actual decrypted packet length (296, 316, 344, 368) */
+    char rx_packet_type;     /* 'A', 'B', '~', 'C' */
+    bool has_packet_b;       /* True if packet >= 316 bytes */
+    bool has_packet_tilde;   /* True if packet >= 344 bytes */
+    bool has_packet_c;       /* True if packet >= 368 bytes */
+
+    /* Packet B (0x128..0x13B) - Native 6-DoF Inertial Acceleration & Rates */
+    float native_sway;       /* Live lateral G-force (0x130) */
+    float native_heave;      /* Live vertical bump G-force (0x134) */
+    float native_surge;      /* Live longitudinal accel/brake G-force (0x138) */
+    float steering_ang_vel;  /* Steering angular velocity in rad/s (0x12C) */
+    float wheel_rotation;    /* Wheel rotation rate (0x128) */
+
+    /* Packet ~ (0x13C..0x157) - Advanced EV / Hybrid & Actuator Channels */
+    float throttle_filtered; /* Filtered throttle % (0x13C) */
+    float brake_filtered;    /* Filtered brake % (0x13D) */
+    float tcs_cut_pct;       /* Active TCS engine throttle cut % (0x13E) */
+    float abs_cut_pct;       /* Active ABS brake modulation cut % (0x13F) */
+    float torque_vector_nm[4]; /* Per-wheel motor torque in Nm (0x140..0x14C: FL, FR, RL, RR) */
+    float energy_recovery_kw;/* Live EV/Hybrid regenerative recharge power in kW (0x150) */
+    float battery_soc_pct;   /* EV Battery State of Charge % (0x154) */
+
+    /* Packet C (0x13C..0x16F) - Motorsport Contact Patch, Steering & Category */
+    uint8_t surface_type[4]; /* Tire contact surface type: 'T'=Tarmac, 'C'=Curb, 'D'=Dirt, 'G'=Grass, 'S'=Snow (0x13C..0x13F) */
+    int32_t current_lap_time_ms; /* GT7 internal millisecond-exact lap timer (0x140) */
+    float steer_angle_fl_deg;/* Front Left wheel steering angle in degrees (0x144, converted from rad) */
+    float steer_angle_fr_deg;/* Front Right wheel steering angle in degrees (0x148, converted from rad) */
+    float wheel_base_m;      /* Vehicle wheelbase in meters (0x14C) */
+    char car_category[16];   /* GT7 Category string: "Gr.1", "Gr.2", "Gr.3", "Gr.4", "Gr.B", "Road" (0x150..0x157) */
+    float downforce_front_kg;/* Front aero downforce in kg (0x15C) */
+    float downforce_rear_kg; /* Rear aero downforce in kg (0x160) */
+    float trans_oil_temp;    /* Transmission oil temp in °C (0x164) */
+
     /* Lap History Table for Track Info Mode */
     gt7_lap_record_t lap_history[GT7_MAX_LAPS];
     int lap_history_count;
@@ -165,6 +209,10 @@ typedef struct {
     char subnet_prefix[48];  /* e.g. "192.168.1" */
     uint8_t scan_cursor;     /* Current host octet being swept during auto-discovery */
     uint32_t last_heartbeat_ms;
+    gt7_heartbeat_mode_t heartbeat_mode; /* AUTO, PKT_C, PKT_TILDE, PKT_A, PKT_B */
+    char active_hb_char;     /* 'A', 'B', '~', 'C' currently being sent */
+    int active_theme_hint;   /* UI theme hint (e.g. 2 for EV) */
+    uint32_t hb_fail_count;  /* Count of heartbeats without reply, for auto-fallback */
     float prev_vel_x, prev_vel_y, prev_vel_z;
     float prev_yaw;
     uint32_t prev_packet_ms;
@@ -180,6 +228,9 @@ typedef struct {
 bool gt7_init(gt7_client_t *client, gt7_state_t *state, const char *ps5_ip);
 void gt7_set_ip(gt7_client_t *client, const char *ps5_ip);
 void gt7_set_auto_detect(gt7_client_t *client, gt7_state_t *state);
+void gt7_set_heartbeat_mode(gt7_client_t *client, gt7_heartbeat_mode_t mode);
+void gt7_cycle_heartbeat_mode(gt7_client_t *client);
+const char *gt7_heartbeat_mode_name(gt7_heartbeat_mode_t mode);
 void gt7_reset_session(gt7_state_t *state);
 void gt7_cycle_demo_circuit(gt7_state_t *state);
 void gt7_update(gt7_client_t *client, gt7_state_t *state, uint32_t now_ms);

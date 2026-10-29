@@ -225,6 +225,8 @@ bool gt7_init(gt7_client_t *client, gt7_state_t *state, const char *ps5_ip) {
     state->demo_mode = true;
     client->tracked_lap = -1;
     client->scan_cursor = 1;
+    client->heartbeat_mode = GT7_HEARTBEAT_AUTO;
+    client->active_hb_char = 'C';
 
     populate_default_circuit_and_laps(state);
     detect_local_subnet(client);
@@ -286,14 +288,60 @@ void gt7_set_auto_detect(gt7_client_t *client, gt7_state_t *state) {
     }
 }
 
+void gt7_set_heartbeat_mode(gt7_client_t *client, gt7_heartbeat_mode_t mode) {
+    if (!client) return;
+    client->heartbeat_mode = mode % GT7_HEARTBEAT_COUNT;
+}
+
+void gt7_cycle_heartbeat_mode(gt7_client_t *client) {
+    if (!client) return;
+    client->heartbeat_mode = (gt7_heartbeat_mode_t)((client->heartbeat_mode + 1) % GT7_HEARTBEAT_COUNT);
+}
+
+const char *gt7_heartbeat_mode_name(gt7_heartbeat_mode_t mode) {
+    switch (mode) {
+        case GT7_HEARTBEAT_AUTO:      return "AUTO (ADAPTIVE)";
+        case GT7_HEARTBEAT_PKT_C:     return "PKT C (368B)";
+        case GT7_HEARTBEAT_PKT_TILDE: return "PKT ~ (344B)";
+        case GT7_HEARTBEAT_PKT_A:     return "PKT A (296B)";
+        case GT7_HEARTBEAT_PKT_B:     return "PKT B (316B)";
+        default:                      return "AUTO";
+    }
+}
+
 static void gt7_send_heartbeat(gt7_client_t *client, bool connected) {
     if (client->sock_fd < 0) return;
+
+    /* Select heartbeat byte based on configured mode or active theme */
+    char hb_char = 'C';
+    switch (client->heartbeat_mode) {
+        case GT7_HEARTBEAT_PKT_C:     hb_char = 'C'; break;
+        case GT7_HEARTBEAT_PKT_TILDE: hb_char = '~'; break;
+        case GT7_HEARTBEAT_PKT_A:     hb_char = 'A'; break;
+        case GT7_HEARTBEAT_PKT_B:     hb_char = 'B'; break;
+        case GT7_HEARTBEAT_AUTO:
+        default:
+            /* Auto-adaptive:
+               - If disconnected and fail count > 8 (~2s): fallback to 'A' to probe older GT7 versions
+               - If in Luxury EV Cockpit (active_theme_hint == 2): send '~' to get EV torque & regen kW
+               - Else (Motorsport, Tach, F1, MoTeC, WRC, JDM, Track): send 'C' to get tire surface, category, steer & lap ms
+            */
+            if (!connected && client->hb_fail_count > 8) {
+                hb_char = 'A';
+            } else if (client->active_theme_hint == 2) {
+                hb_char = '~';
+            } else {
+                hb_char = 'C';
+            }
+            break;
+    }
+    client->active_hb_char = hb_char;
+    const char heartbeat_msg[2] = { hb_char, '\0' };
 
     struct sockaddr_in dest;
     memset(&dest, 0, sizeof(dest));
     dest.sin_family = AF_INET;
     dest.sin_port = htons(GT7_SEND_PORT);
-    const char *heartbeat_msg = "A";
 
     /* 1. If we have a locked/manual IP, send directly to it */
     if (strcmp(client->ps5_ip, "AUTO") != 0 && inet_pton(AF_INET, client->ps5_ip, &dest.sin_addr) == 1) {
@@ -431,6 +479,89 @@ static void gt7_parse_decrypted(gt7_client_t *client, gt7_state_t *state, const 
     }
     state->clutch_pct   = read_f32_le(d, 0xF4) * 100.0f;
     state->car_code     = read_i32_le(d, 0x124);
+
+    state->rx_packet_len = len;
+    client->hb_fail_count = 0;
+
+    /* Check for Packet B extensions (len >= 316 / 0x13C) */
+    if (len >= 0x13C) {
+        state->has_packet_b = true;
+        state->wheel_rotation   = read_f32_le(d, 0x128);
+        state->steering_ang_vel = read_f32_le(d, 0x12C);
+        state->native_sway      = read_f32_le(d, 0x130);
+        state->native_heave     = read_f32_le(d, 0x134);
+        state->native_surge     = read_f32_le(d, 0x138);
+
+        /* Directly use high-fidelity native G-forces if valid */
+        if (fabsf(state->native_sway) > 0.001f || fabsf(state->native_surge) > 0.001f) {
+            state->g_lat = state->native_sway;
+            state->g_lon = state->native_surge;
+        }
+    } else {
+        state->has_packet_b = false;
+        state->wheel_rotation = 0.0f;
+        state->steering_ang_vel = 0.0f;
+        state->native_sway = 0.0f;
+        state->native_heave = 0.0f;
+        state->native_surge = 0.0f;
+    }
+
+    /* Check for Packet C extensions (len >= 368 / 0x170) */
+    if (len >= 0x170) {
+        state->rx_packet_type = 'C';
+        state->has_packet_c = true;
+        state->has_packet_tilde = false;
+
+        state->surface_type[0] = d[0x13C];
+        state->surface_type[1] = d[0x13D];
+        state->surface_type[2] = d[0x13E];
+        state->surface_type[3] = d[0x13F];
+
+        state->current_lap_time_ms = read_i32_le(d, 0x140);
+        if (state->current_lap_time_ms > 0) {
+            state->current_lap_ms = state->current_lap_time_ms;
+        }
+
+        float rad_fl = read_f32_le(d, 0x144);
+        float rad_fr = read_f32_le(d, 0x148);
+        state->steer_angle_fl_deg = rad_fl * (180.0f / (float)M_PI);
+        state->steer_angle_fr_deg = rad_fr * (180.0f / (float)M_PI);
+        state->wheel_base_m = read_f32_le(d, 0x14C);
+
+        memcpy(state->car_category, d + 0x150, 8);
+        state->car_category[8] = '\0';
+        for (int c = 0; c < 8; ++c) {
+            if ((uint8_t)state->car_category[c] < 32 || (uint8_t)state->car_category[c] > 126) {
+                state->car_category[c] = '\0';
+                break;
+            }
+        }
+
+        state->downforce_front_kg = read_f32_le(d, 0x15C);
+        state->downforce_rear_kg  = read_f32_le(d, 0x160);
+        state->trans_oil_temp     = read_f32_le(d, 0x164);
+    } else if (len >= 0x158) { /* Packet ~ extensions (len >= 344 / 0x158) */
+        state->rx_packet_type = '~';
+        state->has_packet_tilde = true;
+        state->has_packet_c = false;
+
+        state->throttle_filtered = ((float)d[0x13C] / 255.0f) * 100.0f;
+        state->brake_filtered    = ((float)d[0x13D] / 255.0f) * 100.0f;
+        state->tcs_cut_pct       = (float)d[0x13E];
+        state->abs_cut_pct       = (float)d[0x13F];
+
+        state->torque_vector_nm[0] = read_f32_le(d, 0x140);
+        state->torque_vector_nm[1] = read_f32_le(d, 0x144);
+        state->torque_vector_nm[2] = read_f32_le(d, 0x148);
+        state->torque_vector_nm[3] = read_f32_le(d, 0x14C);
+
+        state->energy_recovery_kw = read_f32_le(d, 0x150);
+        state->battery_soc_pct    = read_f32_le(d, 0x154);
+    } else {
+        state->rx_packet_type = (len >= 0x13C) ? 'B' : 'A';
+        state->has_packet_c = false;
+        state->has_packet_tilde = false;
+    }
 
     /* Calculate G-forces from velocity delta */
     if (client->prev_packet_ms > 0 && now_ms > client->prev_packet_ms) {
@@ -742,6 +873,88 @@ void gt7_update_demo(gt7_state_t *state, uint32_t now_ms, int theme_index) {
         state->trace_speed[state->trace_head]    = state->speed_kmh;
         state->trace_head = (state->trace_head + 1) % GT7_TRACE_LEN;
         last_trace_ms = now_ms;
+    }
+
+    /* Synthesize Extended GT7 Telemetry Channels (Packet B, Packet ~, Packet C) */
+    state->has_packet_b = true;
+    state->native_sway  = state->g_lat;
+    state->native_surge = state->g_lon;
+    state->native_heave = 0.98f + 0.12f * sinf(t * 18.0f);
+    state->steering_ang_vel = state->g_lat * 2.4f;
+    state->wheel_rotation = state->speed_ms / 0.33f;
+
+    if (theme_index == 2) {
+        /* Mode 3: Modern Luxury EV Digital Cockpit -> Packet ~ (344 bytes) */
+        state->rx_packet_len = 344;
+        state->rx_packet_type = '~';
+        state->has_packet_tilde = true;
+        state->has_packet_c = false;
+
+        state->battery_soc_pct = 78.4f - fmodf(t * 0.05f, 25.0f);
+        state->throttle_filtered = state->throttle_pct;
+        state->brake_filtered    = state->brake_pct;
+
+        if (brake > 5.0f) {
+            /* Active Regenerative Braking up to -285 kW */
+            state->energy_recovery_kw = -(brake * 2.7f + 35.0f * (state->speed_kmh / 300.0f));
+            state->abs_cut_pct = (brake > 82.0f) ? (18.0f + 22.0f * fabsf(sinf(t * 16.0f))) : 0.0f;
+            state->tcs_cut_pct = 0.0f;
+        } else {
+            /* Live Electric Drive Output up to +490 kW */
+            state->energy_recovery_kw = (throttle > 5.0f) ? (throttle * 4.4f + 45.0f) : 0.0f;
+            state->abs_cut_pct = 0.0f;
+            state->tcs_cut_pct = (throttle > 85.0f && gear <= 2) ? (24.0f + 30.0f * fabsf(sinf(t * 14.0f))) : 0.0f;
+        }
+
+        /* 4-Wheel Torque Vectoring in Nm */
+        float base_nm = (throttle > 5.0f) ? (throttle * 7.2f) : (brake > 5.0f ? -brake * 3.8f : 0.0f);
+        float yaw_bias = state->g_lat * 0.28f;
+        state->torque_vector_nm[0] = base_nm * (0.46f - yaw_bias);
+        state->torque_vector_nm[1] = base_nm * (0.46f + yaw_bias);
+        state->torque_vector_nm[2] = base_nm * (0.54f - yaw_bias);
+        state->torque_vector_nm[3] = base_nm * (0.54f + yaw_bias);
+    } else {
+        /* Motorsport and Track DDU Modes -> Packet C (368 bytes) */
+        state->rx_packet_len = 368;
+        state->rx_packet_type = 'C';
+        state->has_packet_c = true;
+        state->has_packet_tilde = false;
+
+        /* Official GT7 Car Category tag */
+        if (theme_index == 0) strncpy(state->car_category, "Gr.3", sizeof(state->car_category));
+        else if (theme_index == 1) strncpy(state->car_category, "Gr.2", sizeof(state->car_category));
+        else if (theme_index == 3) strncpy(state->car_category, "Gr.1", sizeof(state->car_category));
+        else if (theme_index == 4) strncpy(state->car_category, "GT3", sizeof(state->car_category));
+        else if (theme_index == 5) strncpy(state->car_category, "Gr.B", sizeof(state->car_category));
+        else if (theme_index == 6) strncpy(state->car_category, "ROAD", sizeof(state->car_category));
+        else strncpy(state->car_category, "PRO-SPEC", sizeof(state->car_category));
+
+        /* Dynamic Contact Patch Surface */
+        state->surface_type[0] = 'T';
+        state->surface_type[1] = 'T';
+        state->surface_type[2] = 'T';
+        state->surface_type[3] = 'T';
+
+        if (cycle >= 12.2f && cycle <= 14.0f) {
+            /* Apex curb rumble contact on inside tires */
+            state->surface_type[0] = 'C';
+            state->surface_type[2] = 'C';
+        }
+
+        /* Front steering angle in degrees */
+        state->steer_angle_fl_deg = state->g_lat * 11.5f;
+        state->steer_angle_fr_deg = state->g_lat * 11.1f;
+        state->wheel_base_m = 2.71f;
+
+        /* Downforce based on speed squared */
+        float spd_factor = (state->speed_kmh / 300.0f);
+        state->downforce_front_kg = 215.0f * spd_factor * spd_factor;
+        state->downforce_rear_kg  = 385.0f * spd_factor * spd_factor;
+        state->trans_oil_temp     = 95.0f + 3.0f * sinf(t * 0.12f);
+
+        state->tcs_cut_pct = (throttle > 85.0f && gear <= 2 && fabsf(state->g_lat) > 0.5f) ? (32.0f + 25.0f * sinf(t * 14.0f)) : 0.0f;
+        state->abs_cut_pct = (brake > 82.0f) ? (28.0f + 20.0f * sinf(t * 16.0f)) : 0.0f;
+        state->current_lap_time_ms = state->current_lap_ms;
     }
 }
 

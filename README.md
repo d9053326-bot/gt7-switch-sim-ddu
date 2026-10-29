@@ -1,5 +1,5 @@
 # GT7 Switch Sim-DDU Pro (Nintendo Switch Sim Racing & EV Cockpit DDU)
-**Version / 版本號: `_aw_1.10.29.0950`**
+**Version / 版本號: `_aw_1.10.29.1350`**
 
 <p align="center">
   <b>🌐 Language Navigation / 語言切換 / 言語切替 / Sprachauswahl:</b><br><br>
@@ -18,8 +18,30 @@
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/telemetry_demo.gif" alt="GT7 Switch Sim-DDU Live Telemetry" width="680">
+  <img src="docs/screenshots/telemetry_demo.gif" alt="GT7 Switch Sim-DDU Live Telemetry" width="680">
 </p>
+
+---
+
+## 🏎️ GT7 Telemetry Protocol Architecture & Comparison / 跑車浪漫旅 7 遙測封包規格比較
+
+| Telemetry Channel / 遙測頻道 | Packet A (傳統封包) | Packet B (慣性頻道) | Packet ~ (純電進階封包) | Packet C (完整賽事旗艦封包) |
+| :--- | :---: | :---: | :---: | :---: |
+| **封包長度 (Byte Length)** | **296 Bytes** (`0x128`) | **316 Bytes** (`0x13C`) | **344 Bytes** (`0x158`) | **368 Bytes** (`0x170`) |
+| **心跳字元 (Heartbeat Char)** | `'A'` / `'a'` | `'B'` / `'b'` | `'~'` | `'C'` / `'c'` |
+| **基礎車況 (Speed, RPM, Gear, Fuel, Temps)** | ✅ `0x00`–`0x127` | ✅ `0x00`–`0x127` | ✅ `0x00`–`0x127` | ✅ `0x00`–`0x127` |
+| **6-DoF 慣性物理 (Surge/Sway/Heave G, Yaw Rate)** | ❌ (差分計算) | ✅ `0x128`–`0x13B` | ✅ `0x128`–`0x13B` | ✅ `0x128`–`0x13B` |
+| **4輪扭力向量分配 (4-Wheel Torque Vectors Nm)** | ❌ | ❌ | ✅ `0x140`–`0x14F` | ❌ |
+| **即時回充發電與輸出功率 (Regen & Drive Power kW)** | ❌ | ❌ | ✅ `0x150`–`0x153` | ❌ |
+| **高壓電池電量 (Battery State of Charge %)** | ❌ | ❌ | ✅ `0x154`–`0x157` | ❌ |
+| **4輪接地路面類型 (Surface Patch: Tarmac/Curb/Dirt)** | ❌ | ❌ | ❌ | ✅ `0x13C`–`0x13F` (`T`/`C`/`D`/`G`/`S`) |
+| **GT7 毫秒單圈計時器 (Millisecond Exact Lap Timer)** | ❌ (主機估算) | ❌ (主機估算) | ❌ (主機估算) | ✅ `0x140`–`0x143` (GT7 內部引擎精確 ms) |
+| **前雙輪精準轉向角 (Front Wheel Steering Angles)** | ❌ | ❌ | ❌ | ✅ `0x144`–`0x14B` (FL / FR 輪胎徑度轉向) |
+| **軸距長度 (Vehicle Wheelbase)** | ❌ | ❌ | ❌ | ✅ `0x14C`–`0x14F` (米) |
+| **GT7 官方車輛組別代碼 (Car Category)** | ❌ | ❌ | ❌ | ✅ `0x150`–`0x157` (`"Gr.1"`, `"Gr.3"`, `"Gr.B"`) |
+| **前/後空氣動力下壓力 (Front/Rear Aero Downforce)** | ❌ | ❌ | ❌ | ✅ `0x15C`–`0x163` (kg/N) |
+| **變速箱機油油溫 (Transmission Oil Temp)** | ❌ | ❌ | ❌ | ✅ `0x164`–`0x167` (°C) |
+| **本系統連線模式支援 (Sim-DDU Mode)** | 相容舊版本 | 慣性物理平滑 | **EV 豪華純電座艙** (自動智能選用) | **賽事模式/DDU/雷達** (自動智能選用) |
 
 ---
 

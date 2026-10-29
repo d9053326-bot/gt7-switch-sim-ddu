@@ -169,6 +169,7 @@ static const uint8_t FONT5X7[96][5] = {
     ['\\' - 32]= {0x02, 0x04, 0x08, 0x10, 0x20},
     [']' - 32] = {0x00, 0x41, 0x41, 0x7F, 0x00},
     ['_' - 32] = {0x40, 0x40, 0x40, 0x40, 0x40},
+    ['~' - 32] = {0x08, 0x04, 0x08, 0x10, 0x08},
 };
 
 static void draw_text(SDL_Renderer *r, const char *str, int x, int y, int scale, rgba_t c) {
@@ -463,7 +464,23 @@ static void draw_tires_widget(SDL_Renderer *r, const gt7_state_t *state, int x, 
         draw_text_centered(r, labels[i], tx + box_w / 2, ty + 10, 2, rgba(10, 12, 16, 255));
         char tbuf[16];
         snprintf(tbuf, sizeof(tbuf), "%.0fC", state->tire_temp[i]);
-        draw_text_centered(r, tbuf, tx + box_w / 2, ty + box_h / 2 - 6, 3, rgba(10, 12, 16, 255));
+        draw_text_centered(r, tbuf, tx + box_w / 2, ty + box_h / 2 - 8, 3, rgba(10, 12, 16, 255));
+
+        /* Packet C Surface Contact Patch Badge: T=Tarmac, C=Curb, D=Dirt, G=Grass, S=Snow */
+        char surf_char = (state->surface_type[i] != 0) ? (char)state->surface_type[i] : 'T';
+        rgba_t surf_bg = rgba(14, 22, 34, 255);
+        rgba_t surf_fg = rgba(0, 225, 255, 255);
+        if (surf_char == 'C' || surf_char == 'c') {
+            surf_bg = rgba(245, 175, 20, 255);
+            surf_fg = rgba(0, 0, 0, 255);
+        } else if (surf_char == 'D' || surf_char == 'd' || surf_char == 'G' || surf_char == 'g') {
+            surf_bg = rgba(225, 45, 45, 255);
+            surf_fg = rgba(255, 255, 255, 255);
+        }
+        int s_badge_y = ty + box_h - 22;
+        fill_rect(r, tx + 6, s_badge_y, box_w - 12, 17, surf_bg);
+        char s_str[8] = { surf_char, '\0' };
+        draw_text_centered(r, s_str, tx + box_w / 2, s_badge_y + 2, 2, surf_fg);
 
         int susp_h = (int)(state->susp_height[i] * 0.75f);
         if (susp_h < 4) susp_h = 4;
@@ -600,7 +617,7 @@ static void draw_track_map_geometry(SDL_Renderer *r, const gt7_state_t *state, i
 static void draw_circuit_map_widget(SDL_Renderer *r, const gt7_state_t *state, int x, int y, int w, int h, rgba_t accent, bool detailed) {
     draw_panel(r, x, y, w, h, rgba(0, 0, 0, 255), accent, 14);
     char hdr[80];
-    char short_circuit[32];
+    char short_circuit[64];
     snprintf(short_circuit, sizeof(short_circuit), "%s", state->circuit_name[0] ? state->circuit_name : "CIRCUIT");
     if (strlen(short_circuit) > 16) {
         short_circuit[14] = '.';
@@ -661,6 +678,13 @@ static void render_theme_gt7_official(SDL_Renderer *r, const gt7_state_t *state,
     snprintf(pbuf, sizeof(pbuf), "/ %d", state->total_laps > 0 ? state->total_laps : 15);
     draw_text(r, pbuf, 286, top_y + 66, 3, gt_silver);
 
+    /* Official GT7 Car Category Tag (from Packet C) */
+    if (state->car_category[0]) {
+        fill_rect(r, 260, top_y + 14, 90, 20, rgba(20, 32, 50, 255));
+        draw_rect(r, 260, top_y + 14, 90, 20, 1, gt_cyan);
+        draw_text_centered(r, state->car_category, 305, top_y + 17, 1, gt_cyan);
+    }
+
     /* 2. Top-Center GT7 Live Time Diff Pill & Sweeping Horizon RPM Arc */
     int d_w = 260, d_x = SCREEN_W / 2 - d_w / 2;
     draw_panel(r, d_x, top_y + 4, d_w, 46, rgba(0, 0, 0, 255),
@@ -705,9 +729,17 @@ static void render_theme_gt7_official(SDL_Renderer *r, const gt7_state_t *state,
         fill_rect(r, tx + 4, ty + 4, 44, 66, tc);
         draw_rect(r, tx, ty, 52, 74, (state->tire_slip_ratio[i] > 0.12f) ? 3 : 1,
                   (state->tire_slip_ratio[i] > 0.12f) ? gt_red : gt_white);
-        draw_text_centered(r, t_lbl[i], tx + 26, ty + 10, 2, rgba(10, 12, 18, 255));
+        draw_text_centered(r, t_lbl[i], tx + 26, ty + 8, 2, rgba(10, 12, 18, 255));
         snprintf(pbuf, sizeof(pbuf), "%.0fC", state->tire_temp[i]);
-        draw_text_centered(r, pbuf, tx + 26, ty + 38, 2, rgba(10, 12, 18, 255));
+        draw_text_centered(r, pbuf, tx + 26, ty + 32, 2, rgba(10, 12, 18, 255));
+
+        /* Packet C Tire Surface Badge (Tarmac, Curb, Dirt) */
+        char sc = (state->surface_type[i] != 0) ? (char)state->surface_type[i] : 'T';
+        rgba_t sc_bg = (sc == 'C' || sc == 'c') ? rgba(245, 175, 20, 255) : ((sc == 'D' || sc == 'd' || sc == 'G' || sc == 'g') ? rgba(225, 45, 45, 255) : rgba(18, 26, 40, 255));
+        rgba_t sc_fg = (sc == 'C' || sc == 'c') ? rgba(0, 0, 0, 255) : gt_white;
+        fill_rect(r, tx + 12, ty + 50, 28, 16, sc_bg);
+        char sc_str[4] = { sc, '\0' };
+        draw_text_centered(r, sc_str, tx + 26, ty + 52, 1, sc_fg);
     }
 
     /* Right side of Bottom-Left card: Vertical GT7 Fuel Bar & Remaining Laps */
@@ -1421,6 +1453,146 @@ static void draw_radial_dial_ticks(SDL_Renderer *r, int cx, int cy, int r_in, in
     }
 }
 
+/* =========================================================================
+ * VECTOR ICON DRAWING PRIMITIVES (Zero UTF-8 font corruption, 100% crisp)
+ * ========================================================================= */
+
+/* Top-down Car Silhouette with seats / seatbelt indicators */
+static void draw_icon_car_topdown(SDL_Renderer *r, int cx, int cy, int w, int h, rgba_t body_col, rgba_t seat_alert_col, bool alert_front_right, bool alert_rear_mid) {
+    int x0 = cx - w / 2;
+    int y0 = cy - h / 2;
+    /* Outer chassis body */
+    draw_panel(r, x0, y0, w, h, rgba(10, 18, 30, 255), body_col, 5);
+    /* Windshield */
+    int ws_y = y0 + (int)(h * 0.22f);
+    draw_line(r, x0 + 4, ws_y, x0 + w - 5, ws_y, body_col);
+    /* Rear window */
+    int rw_y = y0 + (int)(h * 0.72f);
+    draw_line(r, x0 + 4, rw_y, x0 + w - 5, rw_y, body_col);
+    /* Wheels (4 dark nubs) */
+    fill_rect(r, x0 - 2, y0 + 3, 2, 6, rgba(50, 70, 95, 255));
+    fill_rect(r, x0 + w, y0 + 3, 2, 6, rgba(50, 70, 95, 255));
+    fill_rect(r, x0 - 2, y0 + h - 9, 2, 6, rgba(50, 70, 95, 255));
+    fill_rect(r, x0 + w, y0 + h - 9, 2, 6, rgba(50, 70, 95, 255));
+    /* Passenger Seats */
+    /* Front Driver (left) */
+    fill_rect(r, cx - 6, cy - 3, 4, 5, rgba(60, 220, 120, 255));
+    /* Front Passenger (right) */
+    fill_rect(r, cx + 2, cy - 3, 4, 5, alert_front_right ? seat_alert_col : rgba(60, 220, 120, 255));
+    /* Rear Seats (3 seats) */
+    fill_rect(r, cx - 7, cy + 5, 3, 4, rgba(60, 220, 120, 255));
+    fill_rect(r, cx - 1, cy + 5, 3, 4, alert_rear_mid ? seat_alert_col : rgba(60, 220, 120, 255));
+    fill_rect(r, cx + 5, cy + 5, 3, 4, rgba(60, 220, 120, 255));
+}
+
+/* Seatbelt Warning Icon */
+static void draw_icon_seatbelt(SDL_Renderer *r, int cx, int cy, rgba_t col) {
+    /* Head */
+    fill_circle(r, cx, cy - 6, 3, col);
+    /* Body */
+    draw_line(r, cx - 4, cy + 6, cx + 4, cy + 6, col);
+    draw_line(r, cx - 4, cy + 6, cx - 2, cy - 1, col);
+    draw_line(r, cx + 4, cy + 6, cx + 2, cy - 1, col);
+    /* Diagonal Seatbelt sash */
+    draw_thick_line(r, cx - 5, cy - 2, cx + 4, cy + 6, 2, col);
+}
+
+/* Steering Wheel Assist Icon (MBUX / BMW ADAS) */
+static void draw_icon_steering_wheel(SDL_Renderer *r, int cx, int cy, int rad, rgba_t col) {
+    draw_circle(r, cx, cy, rad, 2, col);
+    fill_circle(r, cx, cy, 3, col);
+    /* Left, Right, Bottom spokes */
+    draw_line(r, cx - rad + 2, cy, cx - 3, cy, col);
+    draw_line(r, cx + 3, cy, cx + rad - 2, cy, col);
+    draw_line(r, cx, cy + 3, cx, cy + rad - 2, col);
+}
+
+/* Mercedes MBUX Dual-Leaf Eco Icon */
+static void draw_icon_leaf(SDL_Renderer *r, int cx, int cy, rgba_t col) {
+    /* Left leaf curve */
+    draw_thick_line(r, cx - 8, cy - 4, cx, cy + 5, 2, col);
+    draw_thick_line(r, cx - 8, cy - 4, cx - 2, cy - 1, 2, col);
+    draw_thick_line(r, cx - 2, cy - 1, cx, cy + 5, 2, col);
+    /* Right leaf curve */
+    draw_thick_line(r, cx + 8, cy - 6, cx, cy + 5, 2, col);
+    draw_thick_line(r, cx + 8, cy - 6, cx + 3, cy - 2, 2, col);
+    draw_thick_line(r, cx + 3, cy - 2, cx, cy + 5, 2, col);
+    /* Stem */
+    draw_line(r, cx, cy + 5, cx, cy + 9, col);
+}
+
+/* Fuel Pump Icon */
+static void draw_icon_fuel_pump(SDL_Renderer *r, int x, int y, rgba_t col) {
+    /* Dispenser box */
+    draw_rect(r, x, y, 10, 13, 2, col);
+    /* Window in pump */
+    draw_line(r, x + 2, y + 3, x + 8, y + 3, col);
+    /* Hose */
+    draw_line(r, x + 10, y + 3, x + 13, y + 5, col);
+    draw_line(r, x + 13, y + 5, x + 13, y + 10, col);
+    /* Nozzle */
+    draw_line(r, x + 13, y + 10, x + 11, y + 12, col);
+}
+
+/* High-Voltage EV Battery Icon */
+static void draw_icon_battery(SDL_Renderer *r, int x, int y, int w, int h, float pct, rgba_t col) {
+    draw_rect(r, x, y, w, h, 2, col);
+    /* Terminal nub */
+    fill_rect(r, x + w, y + h / 4, 2, h / 2, col);
+    /* Fill segments */
+    int fill_w = (int)((w - 4) * pct);
+    if (fill_w > 0) {
+        fill_rect(r, x + 2, y + 2, fill_w, h - 4, col);
+    }
+}
+
+/* Headlight Beam Icon */
+static void draw_icon_headlight(SDL_Renderer *r, int cx, int cy, rgba_t col) {
+    /* Lens dome (left side) */
+    draw_circle(r, cx - 2, cy, 6, 2, col);
+    fill_rect(r, cx - 2, cy - 7, 7, 14, rgba(0, 0, 0, 255));
+    draw_line(r, cx - 2, cy - 6, cx - 2, cy + 6, col);
+    /* 3 Rays */
+    draw_line(r, cx + 2, cy - 4, cx + 10, cy - 4, col);
+    draw_line(r, cx + 2, cy,     cx + 10, cy,     col);
+    draw_line(r, cx + 2, cy + 4, cx + 10, cy + 4, col);
+}
+
+/* Snowflake Temperature Icon */
+static void draw_icon_snowflake(SDL_Renderer *r, int cx, int cy, rgba_t col) {
+    /* Cross */
+    draw_line(r, cx, cy - 6, cx, cy + 6, col);
+    draw_line(r, cx - 6, cy, cx + 6, cy, col);
+    /* Diagonals */
+    draw_line(r, cx - 4, cy - 4, cx + 4, cy + 4, col);
+    draw_line(r, cx - 4, cy + 4, cx + 4, cy - 4, col);
+    /* Center point */
+    fill_circle(r, cx, cy, 1, col);
+}
+
+/* Lane Assist Active Icon (ADAS) */
+static void draw_icon_lane_assist(SDL_Renderer *r, int cx, int cy, rgba_t col) {
+    /* Left lane line */
+    draw_thick_line(r, cx - 14, cy + 8, cx - 7, cy - 8, 2, col);
+    /* Right lane line */
+    draw_thick_line(r, cx + 14, cy + 8, cx + 7, cy - 8, 2, col);
+    /* Small car centered in lane */
+    draw_panel(r, cx - 4, cy - 4, 8, 8, rgba(0, 0, 0, 0), col, 2);
+}
+
+/* Radar Cruise Distance Icon */
+static void draw_icon_radar_distance(SDL_Renderer *r, int cx, int cy, rgba_t col) {
+    /* Lead car */
+    draw_panel(r, cx - 14, cy - 5, 8, 10, rgba(0, 0, 0, 0), col, 2);
+    /* Radar waves */
+    draw_line(r, cx - 2, cy - 4, cx, cy, col);
+    draw_line(r, cx, cy, cx - 2, cy + 4, col);
+    draw_line(r, cx + 2, cy - 6, cx + 5, cy, col);
+    draw_line(r, cx + 5, cy, cx + 2, cy + 6, col);
+    /* Trailing car */
+    draw_panel(r, cx + 8, cy - 5, 8, 10, rgba(0, 0, 0, 0), col, 2);
+}
+
 /* 1. MERCEDES-BENZ MBUX CLASSIC COCKPIT (Dual 472px Dials, Horizon Wave, "From Reset" Card) */
 static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const hud_ui_state_t *ui, uint32_t now_ms, int content_y, int content_h) {
     (void)now_ms;
@@ -1433,11 +1605,12 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     rgba_t mb_green  = rgba(60, 220, 120, 255);
 
     /* Ambient Electric Horizon Wave in center */
-    for (int y = content_y + 120; y <= content_y + 360; y += 4) {
-        float frac = 1.0f - fabsf((float)(y - (content_y + 240))) / 120.0f;
-        if (frac > 0.0f) {
-            uint8_t a = (uint8_t)(frac * 55.0f);
-            draw_thick_line(r, 260, y, 1020, y, 2, rgba(0, 100, 220, a));
+    for (int y = content_y + 100; y <= content_y + 350; y += 3) {
+        float dist = fabsf((float)(y - (content_y + 225))) / 125.0f;
+        if (dist < 1.0f) {
+            float intensity = 1.0f - dist * dist;
+            uint8_t a = (uint8_t)(intensity * 50.0f);
+            draw_thick_line(r, 260, y, 1020, y, 3, rgba(0, 110, 225, a));
         }
     }
 
@@ -1488,7 +1661,8 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     int cur_range = (int)(state->fuel_pct * (ui->use_mph ? 3.8f : 6.1f));
     char f_lbl[24];
     snprintf(f_lbl, sizeof(f_lbl), "%d %s", cur_range, ui->use_mph ? "mi" : "km");
-    draw_text_centered(r, f_lbl, left_cx, fuel_y - 10, 1, text_wh);
+    draw_icon_fuel_pump(r, left_cx - 42, fuel_y - 12, text_wh);
+    draw_text(r, f_lbl, left_cx - 28, fuel_y - 10, 1, text_wh);
     draw_text(r, "0", left_cx - 48, fuel_y + 8, 1, text_dim);
     draw_text(r, "1/2", left_cx - 8, fuel_y + 14, 1, text_dim);
     draw_text(r, "1", left_cx + 36, fuel_y + 8, 1, text_dim);
@@ -1526,6 +1700,15 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     int pwr_lbl_y = cy + dial_rad - 48;
     draw_text(r, "POWER", right_cx - 48, pwr_lbl_y, 1, text_wh);
     draw_text(r, "CHARGE", right_cx + 12, pwr_lbl_y, 1, mb_cyan);
+    if (state->energy_recovery_kw < -1.0f) {
+        char kw_buf[16];
+        snprintf(kw_buf, sizeof(kw_buf), "%d kW", (int)fabsf(state->energy_recovery_kw));
+        draw_text_centered(r, kw_buf, right_cx + 34, pwr_lbl_y + 14, 1, mb_cyan);
+    } else if (state->energy_recovery_kw > 1.0f) {
+        char kw_buf[16];
+        snprintf(kw_buf, sizeof(kw_buf), "%d kW", (int)state->energy_recovery_kw);
+        draw_text_centered(r, kw_buf, right_cx - 28, pwr_lbl_y + 14, 1, text_wh);
+    }
 
     /* Dynamic Vertical Gear Selector Column & Driving Mode Pill (completely OUTSIDE dial) */
     int gr_x = 1206;
@@ -1565,7 +1748,7 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     draw_speed_limit_sign(r, mid_cx - 150, top_row_y + 20, 50, true);
 
     /* Radar Cruise Distance Icon */
-    draw_text(r, "[>>] 🚗", mid_cx - 100, top_row_y + 12, 1, text_dim);
+    draw_icon_radar_distance(r, mid_cx - 95, top_row_y + 20, text_dim);
 
     /* Center Digital Speed */
     int ispd = (int)roundf(speed);
@@ -1573,12 +1756,11 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     draw_text_centered(r, ui->use_mph ? "mph" : "km/h", mid_cx - 8, top_row_y + 54, 1, text_dim);
 
     /* Steering & Lane Assist Icons */
-    draw_text(r, "(◎)", mid_cx + 70, top_row_y + 14, 2, mb_green);
-    draw_text(r, "/🚗\\", mid_cx + 120, top_row_y + 14, 2, text_dim);
+    draw_icon_steering_wheel(r, mid_cx + 80, top_row_y + 20, 10, mb_green);
+    draw_icon_lane_assist(r, mid_cx + 130, top_row_y + 20, text_dim);
 
     /* Red Seatbelt Warning at top center */
-    fill_rect(r, mid_cx - 16, top_row_y - 6, 14, 14, mb_red);
-    draw_text_centered(r, "!", mid_cx - 9, top_row_y - 7, 1, text_wh);
+    draw_icon_seatbelt(r, mid_cx - 8, top_row_y - 4, mb_red);
 
     /* ================= CENTER FLOATING CARD: "From Reset" / "ENTIRE" ================= */
     int card_w = 260;
@@ -1609,13 +1791,26 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     int rem_range = (int)(state->fuel_pct * (ui->use_mph ? 3.8f : 6.1f));
     snprintf(c_buf, sizeof(c_buf), "%d %s", rem_range, ui->use_mph ? "mi" : "km");
     draw_text(r, c_buf, card_x + 18, card_y + 96, 2, mb_cyan);
+    draw_icon_leaf(r, mid_cx, card_y + 104, mb_green);
     snprintf(c_buf, sizeof(c_buf), "POS %d/%d", (state->race_position > 0) ? state->race_position : 1, (state->total_cars > 0) ? state->total_cars : 16);
     draw_text(r, c_buf, card_x + 150, card_y + 96, 2, text_wh);
 
-    /* ================= CENTER BOTTOM: Seat Occupancy, Dynamic Driving Status ================= */
-    int bot_card_y = card_y + card_h + 36;
-    draw_panel(r, mid_cx - 95, bot_card_y, 190, 32, rgba(6, 14, 26, 230), rgba(25, 50, 85, 255), 8);
-    draw_text_centered(r, "[o] [o]   [x]   [o] [o]", mid_cx, bot_card_y + 8, 2, text_dim);
+    /* ================= CENTER BELOW CARD: Seat Occupancy Graphic & AWD Split ================= */
+    int occ_w = 230, occ_h = 24, occ_x = mid_cx - occ_w / 2, occ_y = card_y + card_h + 10;
+    draw_panel(r, occ_x, occ_y, occ_w, occ_h, rgba(8, 16, 32, 230), rgba(25, 50, 85, 255), 8);
+    draw_icon_car_topdown(r, occ_x + 55, occ_y + 12, 18, 20, rgba(40, 75, 120, 255), mb_red, false, false);
+    draw_thick_line(r, occ_x + 105, occ_y + 12, occ_x + 130, occ_y + 12, 3, mb_red);
+    fill_rect(r, occ_x + 130, occ_y + 7, 8, 10, mb_red);
+
+    int bot_card_y = occ_y + occ_h + 10;
+    draw_panel(r, mid_cx - 105, bot_card_y, 210, 28, rgba(6, 14, 26, 230), rgba(25, 50, 85, 255), 8);
+    char awd_buf[32];
+    snprintf(awd_buf, sizeof(awd_buf), "AWD: F %d%% | R %d%%",
+             (state->torque_vector_nm[0] > 0.1f || state->torque_vector_nm[2] > 0.1f) ?
+             (int)(100.0f * (state->torque_vector_nm[0] + state->torque_vector_nm[1]) / (state->torque_vector_nm[0] + state->torque_vector_nm[1] + state->torque_vector_nm[2] + state->torque_vector_nm[3] + 0.1f)) : 46,
+             (state->torque_vector_nm[0] > 0.1f || state->torque_vector_nm[2] > 0.1f) ?
+             (int)(100.0f * (state->torque_vector_nm[2] + state->torque_vector_nm[3]) / (state->torque_vector_nm[0] + state->torque_vector_nm[1] + state->torque_vector_nm[2] + state->torque_vector_nm[3] + 0.1f)) : 54);
+    draw_text_centered(r, awd_buf, mid_cx, bot_card_y + 6, 2, mb_cyan);
 
     int status_y = content_y + content_h - 22;
     draw_text(r, "01:58 pm", 355, status_y, 2, text_dim);
@@ -1629,7 +1824,8 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
         snprintf(lap_buf, sizeof(lap_buf), "LAP %d", (state->current_lap > 0) ? state->current_lap : 1);
         draw_text(r, lap_buf, 620, status_y, 2, text_wh);
     }
-    draw_text(r, "❄ 24°F", 715, status_y, 2, text_dim);
+    draw_icon_snowflake(r, 706, status_y + 7, text_dim);
+    draw_text(r, "24°F", 718, status_y, 2, text_dim);
 }
 
 /* 2. BMW CURVED DISPLAY OS 8.5/9 (Symmetrical Dual Chevrons, Full-Width 3D Nav Map) */
@@ -1674,8 +1870,24 @@ static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud
     draw_thick_line(r, map_x + map_w / 2 + 10, map_y + map_h, map_x + map_w / 2 - 30, map_y + map_h / 2, 4, rgba(230, 245, 255, 240));
     draw_thick_line(r, map_x + map_w / 2 - 30, map_y + map_h / 2, map_x + map_w / 2 + 120, map_y + 35, 4, rgba(230, 245, 255, 240));
 
-    /* Actual GT7 Real-time Track Map Overlay (cleanly contained in center) */
-    draw_track_map_geometry(r, state, 390, map_y + 25, SCREEN_W - 780, map_h - 50, 3, 2, false);
+    /* Angled city street network (BMW iDrive 3D Navigation) */
+    draw_thick_line(r, map_x + 80, map_y + 120, map_x + 320, map_y + 30, 2, rgba(25, 55, 110, 255));
+    draw_thick_line(r, map_x + 120, map_y + map_h - 40, map_x + 420, map_y + 80, 2, rgba(25, 55, 110, 255));
+    draw_thick_line(r, map_x + map_w - 90, map_y + 100, map_x + map_w - 340, map_y + 40, 2, rgba(25, 55, 110, 255));
+    draw_thick_line(r, map_x + map_w - 120, map_y + map_h - 50, map_x + map_w - 410, map_y + 90, 2, rgba(25, 55, 110, 255));
+
+    /* Destination waypoint pin */
+    draw_rect(r, map_x + map_w / 2 - 8, map_y + map_h / 2 - 25, 16, 16, 2, text_wh);
+    fill_rect(r, map_x + map_w / 2 - 4, map_y + map_h / 2 - 21, 8, 8, text_wh);
+
+    /* BMW Driver Attention Camera Trapezoid Notch at top center */
+    fill_rect(r, SCREEN_W / 2 - 50, map_y, 100, 16, rgba(0, 0, 0, 255));
+    draw_thick_line(r, SCREEN_W / 2 - 60, map_y, SCREEN_W / 2 - 45, map_y + 16, 2, rgba(20, 30, 45, 255));
+    draw_thick_line(r, SCREEN_W / 2 + 60, map_y, SCREEN_W / 2 + 45, map_y + 16, 2, rgba(20, 30, 45, 255));
+    draw_line(r, SCREEN_W / 2 - 45, map_y + 16, SCREEN_W / 2 + 45, map_y + 16, rgba(20, 30, 45, 255));
+
+    /* Actual GT7 Real-time Track Map Overlay (cleanly contained in central corridor) */
+    draw_track_map_geometry(r, state, 470, map_y + 35, SCREEN_W - 940, map_h - 70, 3, 2, false);
 
     /* Center Navigation Position Triangle Cursor */
     int nav_cx = map_x + map_w / 2;
@@ -1765,11 +1977,11 @@ static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud
 
     /* Huge Digital Speed Readout nestled cleanly in the crook of the left chevron */
     int ispd = (int)roundf(speed);
-    draw_7seg_number_centered(r, ispd, 3, false, 350, cy - 36, 40, 60, 8, 7, text_wh, rgba(0, 0, 0, 0));
-    draw_text_centered(r, ui->use_mph ? "mph" : "km/h", 350, cy + 34, 2, text_wh);
+    draw_7seg_number_centered(r, ispd, 3, false, 380, cy - 36, 42, 64, 8, 7, text_wh, rgba(0, 0, 0, 0));
+    draw_text_centered(r, ui->use_mph ? "mph" : "km/h", 380, cy + 36, 2, text_wh);
 
     /* Left Green Headlight Indicator Icon */
-    draw_text(r, "=D", 50, cy + 30, 2, bmw_green);
+    draw_icon_headlight(r, 55, cy + 30, bmw_green);
 
     /* ================= RIGHT CHEVRON: POWER & ADAPTIVE BRACKET (>) ================= */
     /* Outer Symmetrical Chevron Coordinates */
@@ -1847,22 +2059,34 @@ static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud
     }
 
     /* Dynamic Gear Indicator nestled cleanly in the crook of the right chevron */
-    char bmw_gear[8];
     bool is_p = (state->speed_kmh < 1.0f && state->current_gear <= 0);
     bool is_r = (state->current_gear == 0);
     bool is_n = (state->current_gear == -1);
     bool is_sport = (state->throttle_pct > 75.0f);
 
     if (is_p) {
-        snprintf(bmw_gear, sizeof(bmw_gear), "P");
+        draw_text_centered(r, "P", SCREEN_W - 380, cy - 35, 6, text_wh);
     } else if (is_r) {
-        snprintf(bmw_gear, sizeof(bmw_gear), "R");
+        draw_text_centered(r, "R", SCREEN_W - 380, cy - 35, 6, rgba(255, 195, 45, 255));
     } else if (is_n) {
-        snprintf(bmw_gear, sizeof(bmw_gear), "N");
+        draw_text_centered(r, "N", SCREEN_W - 380, cy - 35, 6, text_wh);
     } else {
-        snprintf(bmw_gear, sizeof(bmw_gear), "%s%d", is_sport ? "S" : "D", state->current_gear);
+        /* Split letter D/S from gear number so they never look like 55 */
+        draw_text(r, is_sport ? "S" : "D", SCREEN_W - 400, cy - 35, 6, is_sport ? rgba(255, 60, 60, 255) : text_wh);
+        char g_num[8];
+        snprintf(g_num, sizeof(g_num), "%d", state->current_gear);
+        draw_text(r, g_num, SCREEN_W - 360, cy - 35, 3, is_sport ? rgba(255, 60, 60, 255) : bmw_cyan);
     }
-    draw_text_centered(r, bmw_gear, SCREEN_W - 350, cy - 25, 5, is_r ? rgba(255, 195, 45, 255) : (is_sport ? rgba(255, 60, 60, 255) : text_wh));
+
+    /* Live Energy Recovery / Drive Output in kW */
+    char bmw_kw[24];
+    if (state->energy_recovery_kw < -1.0f) {
+        snprintf(bmw_kw, sizeof(bmw_kw), "-%d kW", (int)fabsf(state->energy_recovery_kw));
+        draw_text_centered(r, bmw_kw, SCREEN_W - 380, cy + 32, 2, bmw_green);
+    } else if (state->energy_recovery_kw > 1.0f) {
+        snprintf(bmw_kw, sizeof(bmw_kw), "+%d kW", (int)state->energy_recovery_kw);
+        draw_text_centered(r, bmw_kw, SCREEN_W - 380, cy + 32, 2, bmw_cyan);
+    }
 
     /* Dynamic Lower inner tab: ADAPTIVE / SPORT / REGEN / PARK mode pill */
     const char *mode_name = "ADAPTIVE";
@@ -1893,8 +2117,9 @@ static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud
     /* Left: Dynamic Fuel / Energy range and bar */
     int fuel_range = (int)(state->fuel_pct * (ui->use_mph ? 4.3f : 7.0f));
     char bmw_f_buf[24];
-    snprintf(bmw_f_buf, sizeof(bmw_f_buf), "⛽ %d %s", fuel_range, ui->use_mph ? "mi" : "km");
-    draw_text(r, bmw_f_buf, 130, b_row_y - 12, 2, text_wh);
+    snprintf(bmw_f_buf, sizeof(bmw_f_buf), "%d %s", fuel_range, ui->use_mph ? "mi" : "km");
+    draw_icon_fuel_pump(r, 115, b_row_y - 12, text_wh);
+    draw_text(r, bmw_f_buf, 132, b_row_y - 12, 2, text_wh);
     fill_rect(r, 130, b_row_y + 8, 120, 6, rgba(30, 45, 65, 255));
     int bmw_f_bar = (int)((state->fuel_pct / 100.0f) * 120.0f);
     if (bmw_f_bar > 120) bmw_f_bar = 120;
@@ -1910,9 +2135,8 @@ static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud
     draw_speed_limit_sign(r, 495, b_row_y + 4, 50, false);
 
     /* Overhead car chassis icon + Seatbelt */
-    fill_rect(r, 620, b_row_y - 10, 46, 24, rgba(16, 32, 54, 255));
-    draw_rect(r, 620, b_row_y - 10, 46, 24, 1, rgba(40, 70, 110, 255));
-    draw_text_centered(r, "🚗", 643, b_row_y - 6, 1, text_wh);
+    draw_icon_seatbelt(r, 605, b_row_y + 4, rgba(235, 45, 55, 255));
+    draw_icon_car_topdown(r, 645, b_row_y + 4, 26, 32, rgba(40, 75, 120, 255), rgba(255, 160, 0, 255), true, true);
 
     /* Outside Temperature */
     char temp_buf[24];
@@ -1922,7 +2146,8 @@ static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud
     /* Right: Dynamic High-Voltage Electric battery range and bar */
     int batt_range = (int)((state->fuel_pct > 0.0f ? state->fuel_pct : 80.0f) * (ui->use_mph ? 0.35f : 0.55f));
     char bmw_b_buf[24];
-    snprintf(bmw_b_buf, sizeof(bmw_b_buf), "⚡ %d %s", batt_range, ui->use_mph ? "mi" : "km");
+    snprintf(bmw_b_buf, sizeof(bmw_b_buf), "%d %s", batt_range, ui->use_mph ? "mi" : "km");
+    draw_icon_battery(r, 1058, b_row_y - 12, 16, 11, state->fuel_pct / 100.0f, bmw_cyan);
     draw_text(r, bmw_b_buf, 1080, b_row_y - 12, 2, text_wh);
     fill_rect(r, 1080, b_row_y + 8, 120, 6, rgba(30, 45, 65, 255));
     int bmw_b_bar = (int)((state->fuel_pct / 100.0f) * 120.0f);
@@ -1958,7 +2183,7 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     int top_y = content_y + 12;
 
     /* Headlight & Parking Brake */
-    draw_text(r, "D", 410, top_y, 2, audi_green);
+    draw_icon_headlight(r, 410, top_y + 10, audi_green);
     draw_text(r, "(P)", 510, top_y, 2, audi_red);
 
     /* Dynamic Fuel Range Red Badge */
@@ -1966,8 +2191,7 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     char audi_f_buf[24];
     snprintf(audi_f_buf, sizeof(audi_f_buf), "%d %s", audi_fuel_range, ui->use_mph ? "mi" : "km");
     fill_rect(r, 400, top_y + 24, 110, 24, (state->fuel_pct < 15.0f) ? rgba(200, 30, 40, 255) : audi_red);
-    draw_rect(r, 412, top_y + 29, 8, 12, 1, text_wh);
-    draw_line(r, 420, top_y + 31, 423, top_y + 35, text_wh);
+    draw_icon_fuel_pump(r, 410, top_y + 29, text_wh);
     draw_text_centered(r, audi_f_buf, 465, top_y + 28, 2, text_wh);
 
     /* Radio Station */
@@ -2084,7 +2308,7 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     draw_text_centered(r, is_sport ? "DYNAMIC" : (is_p ? "PARK" : "AUTO"), center_disp_x, mid_y + 92, 1, is_sport ? audi_red : text_dim);
 
     /* Lane Assist Icon */
-    draw_text_centered(r, "/🚗\\", center_disp_x + 130, mid_y + 72, 2, audi_green);
+    draw_icon_lane_assist(r, center_disp_x + 130, mid_y + 72, audi_green);
 
     /* ================= RIGHT SIDE: Dual Circular Pods (Power & Torque) ================= */
     int pod1_cx = 920;
@@ -2132,6 +2356,7 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     float trip_km = (float)state->current_lap * 4.5f + ((float)state->current_lap_ms / 60000.0f) * (state->speed_kmh * 0.015f);
     char odo_buf[24];
     snprintf(odo_buf, sizeof(odo_buf), "%d %s", (int)(8340 + trip_km), ui->use_mph ? "mi" : "km");
+    draw_icon_seatbelt(r, 480, bot_y + 4, audi_red);
     draw_text(r, odo_buf, 500, bot_y - 2, 2, text_wh);
     draw_text(r, "10:43 AM", 500, bot_y + 18, 2, text_dim);
 
@@ -2286,7 +2511,7 @@ static void render_ev_volvo_ex(SDL_Renderer *r, const gt7_state_t *state, const 
     draw_text(r, v_main, r_pod_x + 28, r_pod_y + 70, 5, is_r ? rgba(255, 195, 45, 255) : text_wh);
 
     if (is_d && state->current_gear > 0) {
-        char g_num[4];
+        char g_num[16];
         snprintf(g_num, sizeof(g_num), "%d", state->current_gear);
         draw_text(r, g_num, r_pod_x + 56, r_pod_y + 72, 2, volvo_cyan);
     }
@@ -2305,12 +2530,13 @@ static void render_ev_volvo_ex(SDL_Renderer *r, const gt7_state_t *state, const 
 
     /* ================= TOP STATUS BAR ================= */
     int t_row_y = content_y + 12;
-    draw_text(r, "ED", 420, t_row_y, 2, volvo_green);
-    draw_text(r, "/🚗\\", 590, t_row_y, 2, text_wh);
+    draw_icon_headlight(r, 420, t_row_y + 8, volvo_green);
+    draw_icon_lane_assist(r, 590, t_row_y + 8, text_wh);
     char v_temp_buf[24];
     snprintf(v_temp_buf, sizeof(v_temp_buf), "%s", ui->use_mph ? "52 °F" : "11 °C");
     draw_text(r, v_temp_buf, 725, t_row_y, 2, text_wh);
-    draw_text(r, "🚗 !", 790, t_row_y, 2, rgba(235, 45, 55, 255));
+    draw_icon_seatbelt(r, 775, t_row_y + 8, rgba(235, 45, 55, 255));
+    draw_icon_car_topdown(r, 805, t_row_y + 8, 16, 22, text_wh, rgba(235, 45, 55, 255), true, true);
 
     /* ================= BOTTOM RIGHT DUAL BATTERY / FUEL RANGE STATUS ================= */
     int b_row_y = content_y + content_h - 38;
@@ -2318,17 +2544,17 @@ static void render_ev_volvo_ex(SDL_Renderer *r, const gt7_state_t *state, const 
     int fuel_km = (int)(state->fuel_pct * (ui->use_mph ? 3.4f : 5.4f));
 
     /* Battery Icon & Bar */
-    fill_rect(r, 770, b_row_y - 14, 16, 10, volvo_cyan);
-    fill_rect(r, 786, b_row_y - 12, 2, 6, volvo_cyan);
-    draw_line(r, 794, b_row_y - 9, 830, b_row_y - 9, volvo_cyan);
+    draw_icon_battery(r, 765, b_row_y - 12, 16, 10, (state->fuel_pct > 0.0f ? state->fuel_pct : 85.0f) / 100.0f, volvo_cyan);
+    fill_rect(r, 790, b_row_y - 8, 40, 4, rgba(30, 45, 65, 255));
+    fill_rect(r, 790, b_row_y - 8, (int)(40.0f * ((state->fuel_pct > 0.0f ? state->fuel_pct : 85.0f) / 100.0f)), 4, volvo_cyan);
     char v_bat_buf[32];
     snprintf(v_bat_buf, sizeof(v_bat_buf), "%d %s", batt_km, ui->use_mph ? "mi" : "km");
     draw_text(r, v_bat_buf, 840, b_row_y - 16, 2, volvo_cyan);
 
     /* Fuel Pump Icon & Bar */
-    draw_rect(r, 770, b_row_y + 11, 12, 12, 1, text_wh);
-    draw_line(r, 782, b_row_y + 13, 786, b_row_y + 17, text_wh);
-    draw_line(r, 794, b_row_y + 17, 830, b_row_y + 17, text_wh);
+    draw_icon_fuel_pump(r, 768, b_row_y + 8, text_wh);
+    fill_rect(r, 790, b_row_y + 14, 40, 4, rgba(30, 45, 65, 255));
+    fill_rect(r, 790, b_row_y + 14, (int)(40.0f * (state->fuel_pct / 100.0f)), 4, text_wh);
     char v_fuel_buf[32];
     snprintf(v_fuel_buf, sizeof(v_fuel_buf), "%d %s", fuel_km, ui->use_mph ? "mi" : "km");
     draw_text(r, v_fuel_buf, 840, b_row_y + 10, 2, text_wh);
@@ -2997,25 +3223,25 @@ static const char *THEME_FULL_NAMES[HUD_THEME_COUNT] = {
 
 static void render_ip_modal(SDL_Renderer *r, const gt7_client_t *client, hud_ui_state_t *ui) {
     fill_rect(r, 0, 0, SCREEN_W, SCREEN_H, rgba(0, 0, 0, 225));
-    int mw = 580, mh = 550;
+    int mw = 600, mh = 570;
     int mx = (SCREEN_W - mw) / 2;
     int my = (SCREEN_H - mh) / 2;
 
     draw_panel(r, mx, my, mw, mh, rgba(0, 0, 0, 255), rgba(0, 225, 255, 255), 16);
-    draw_text_centered(r, "PS5 / PS5 PRO IP CONNECTION", SCREEN_W / 2, my + 20, 3, rgba(0, 225, 255, 255));
+    draw_text_centered(r, "PS5 / PS5 PRO IP & TELEMETRY SETUP", SCREEN_W / 2, my + 18, 2, rgba(0, 225, 255, 255));
 
     char sub_info[256];
-    snprintf(sub_info, sizeof(sub_info), "LOCAL IP: %s   |   AUTO-SCAN: %s.1~254", client->local_ip, client->subnet_prefix);
-    draw_text_centered(r, sub_info, SCREEN_W / 2, my + 54, 2, rgba(160, 185, 215, 255));
+    snprintf(sub_info, sizeof(sub_info), "LOCAL IP: %s    AUTO-SCAN: %s.1-254", client->local_ip, client->subnet_prefix);
+    draw_text_centered(r, sub_info, SCREEN_W / 2, my + 46, 2, rgba(160, 185, 215, 255));
 
-    fill_rect(r, mx + 40, my + 82, mw - 80, 56, rgba(0, 0, 0, 255));
-    draw_rect(r, mx + 40, my + 82, mw - 80, 56, 2, rgba(0, 225, 255, 255));
-    draw_text_centered(r, ui->edit_ip[0] ? ui->edit_ip : "AUTO-DETECT OR TAP IP...", SCREEN_W / 2, my + 98, 4, rgba(255, 255, 255, 255));
+    fill_rect(r, mx + 40, my + 72, mw - 80, 50, rgba(0, 0, 0, 255));
+    draw_rect(r, mx + 40, my + 72, mw - 80, 50, 2, rgba(0, 225, 255, 255));
+    draw_text_centered(r, ui->edit_ip[0] ? ui->edit_ip : "AUTO-DETECT OR TAP IP...", SCREEN_W / 2, my + 86, 4, rgba(255, 255, 255, 255));
 
     static const char *keys[12] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "DEL"};
-    int kw = 152, kh = 60, gap = 14;
+    int kw = 156, kh = 50, gap = 10;
     int gx = mx + (mw - (kw * 3 + gap * 2)) / 2;
-    int gy = my + 154;
+    int gy = my + 132;
 
     for (int i = 0; i < 12; ++i) {
         int row = i / 3;
@@ -3024,19 +3250,36 @@ static void render_ip_modal(SDL_Renderer *r, const gt7_client_t *client, hud_ui_
         int by = gy + row * (kh + gap);
         fill_rect(r, bx, by, kw, kh, rgba(32, 42, 62, 255));
         draw_rect(r, bx, by, kw, kh, 2, rgba(80, 105, 145, 255));
-        draw_text_centered(r, keys[i], bx + kw / 2, by + 19, 3, rgba(245, 250, 255, 255));
+        draw_text_centered(r, keys[i], bx + kw / 2, by + 14, 3, rgba(245, 250, 255, 255));
+    }
+
+    /* Dedicated Heartbeat Protocol Row */
+    int proto_y = gy + 4 * (kh + gap) + 8;
+    draw_text_centered(r, "GT7 TELEMETRY PROTOCOL HEARTBEAT:", SCREEN_W / 2, proto_y, 1, rgba(160, 185, 215, 255));
+
+    static const char *proto_labels[4] = {"AUTO (SMART)", "PKT C (368B)", "PKT ~ (344B)", "PKT A (296B)"};
+    int pw = 124, ph = 36, pgap = 10;
+    int px_start = mx + (mw - (pw * 4 + pgap * 3)) / 2;
+    int proto_btn_y = proto_y + 16;
+    for (int p = 0; p < 4; ++p) {
+        int px = px_start + p * (pw + pgap);
+        bool selected = (client->heartbeat_mode == (gt7_heartbeat_mode_t)p);
+        fill_rect(r, px, proto_btn_y, pw, ph, selected ? rgba(0, 215, 255, 255) : rgba(24, 34, 52, 255));
+        draw_rect(r, px, proto_btn_y, pw, ph, 1, selected ? rgba(255, 255, 255, 255) : rgba(70, 95, 130, 255));
+        draw_text_centered(r, proto_labels[p], px + pw / 2, proto_btn_y + 11, 1,
+                           selected ? rgba(0, 0, 0, 255) : rgba(200, 220, 245, 255));
     }
 
     /* 3 Action Buttons: [AUTO DETECT (DEFAULT)], [SET MANUAL IP], [CANCEL] */
-    int by = gy + 4 * (kh + gap) + 6;
-    fill_rect(r, gx, by, 180, 58, rgba(0, 215, 255, 255));
-    draw_text_centered(r, "AUTO DETECT", gx + 90, by + 20, 2, rgba(10, 14, 20, 255));
+    int by = proto_btn_y + ph + 16;
+    fill_rect(r, gx, by, 180, 52, rgba(0, 215, 255, 255));
+    draw_text_centered(r, "AUTO DETECT", gx + 90, by + 18, 2, rgba(10, 14, 20, 255));
 
-    fill_rect(r, gx + 192, by, 160, 58, rgba(0, 210, 100, 255));
-    draw_text_centered(r, "MANUAL IP", gx + 272, by + 20, 2, rgba(10, 14, 20, 255));
+    fill_rect(r, gx + 192, by, 160, 52, rgba(0, 210, 100, 255));
+    draw_text_centered(r, "MANUAL IP", gx + 272, by + 18, 2, rgba(10, 14, 20, 255));
 
-    fill_rect(r, gx + 364, by, 120, 58, rgba(215, 50, 60, 255));
-    draw_text_centered(r, "CANCEL", gx + 424, by + 20, 2, rgba(255, 255, 255, 255));
+    fill_rect(r, gx + 364, by, 124, 52, rgba(215, 50, 60, 255));
+    draw_text_centered(r, "CANCEL", gx + 426, by + 18, 2, rgba(255, 255, 255, 255));
 }
 
 void hud_render(SDL_Renderer *r, const gt7_state_t *state, const gt7_client_t *client, hud_ui_state_t *ui, uint32_t now_ms) {
@@ -3069,16 +3312,31 @@ void hud_render(SDL_Renderer *r, const gt7_state_t *state, const gt7_client_t *c
         fill_rect(r, 0, 0, SCREEN_W, 40, rgba(0, 0, 0, 255));
         set_color(r, rgba(0, 215, 255, 140));
         SDL_RenderDrawLine(r, 0, 40, SCREEN_W, 40);
-        draw_text(r, "GT7 SIM-DDU " GT7_APP_VERSION, 18, 12, 2, rgba(240, 245, 255, 255));
+        draw_text(r, "GT7 DDU", 16, 12, 2, rgba(240, 245, 255, 255));
+        draw_text(r, GT7_APP_VERSION, 106, 15, 1, rgba(140, 160, 190, 255));
+
+        /* Telemetry Protocol Lock Badge: PKT C (368B) / PKT ~ (344B) / PKT A (296B) */
+        char pkt_badge[32];
+        if (state->has_packet_c) {
+            snprintf(pkt_badge, sizeof(pkt_badge), "PKT C (368B)");
+        } else if (state->has_packet_tilde) {
+            snprintf(pkt_badge, sizeof(pkt_badge), "PKT ~ (344B)");
+        } else if (state->has_packet_b) {
+            snprintf(pkt_badge, sizeof(pkt_badge), "PKT B (316B)");
+        } else {
+            snprintf(pkt_badge, sizeof(pkt_badge), "PKT A (296B)");
+        }
+        fill_rect(r, 225, 7, 108, 26, rgba(14, 25, 42, 255));
+        draw_rect(r, 225, 7, 108, 26, 1, rgba(0, 225, 255, 200));
+        draw_text_centered(r, pkt_badge, 279, 14, 1, rgba(0, 225, 255, 255));
 
         char status_str[128];
         rgba_t status_col;
         if (state->connected) {
-            snprintf(status_str, sizeof(status_str), "LIVE PS5 (%s %s) 60HZ",
-                     client->ps5_ip, client->auto_detect ? "AUTO" : "MANUAL");
+            snprintf(status_str, sizeof(status_str), "LIVE PS5 (%s) 60HZ", client->ps5_ip);
             status_col = rgba(0, 240, 110, 255);
         } else if (client->auto_detect) {
-            snprintf(status_str, sizeof(status_str), "AUTO-DETECT PS5 (%s.*) %s",
+            snprintf(status_str, sizeof(status_str), "AUTO PS5 (%s.*) %s",
                      client->subnet_prefix, state->demo_mode ? "| DEMO" : "");
             status_col = rgba(0, 220, 255, 255);
         } else {
@@ -3086,8 +3344,8 @@ void hud_render(SDL_Renderer *r, const gt7_state_t *state, const gt7_client_t *c
                      client->ps5_ip, state->demo_mode ? "| DEMO" : "");
             status_col = rgba(255, 195, 0, 255);
         }
-        fill_circle(r, 410, 19, 6, status_col);
-        draw_text(r, status_str, 425, 12, 2, status_col);
+        fill_circle(r, 350, 19, 6, status_col);
+        draw_text(r, status_str, 365, 12, 2, status_col);
 
         /* Top-Right Touch Buttons: [RESET LAPS] [FULLSCREEN] [EXIT APP] (Works without Joy-Cons!) */
         fill_rect(r, 835, 5, 135, 30, rgba(0, 0, 0, 255));
@@ -3171,12 +3429,12 @@ bool hud_handle_touch_down(hud_ui_state_t *ui, gt7_client_t *client, gt7_state_t
     }
 
     if (ui->show_ip_modal) {
-        int mw = 580, mh = 550;
+        int mw = 600, mh = 570;
         int mx = (SCREEN_W - mw) / 2;
         int my = (SCREEN_H - mh) / 2;
-        int kw = 152, kh = 60, gap = 14;
+        int kw = 156, kh = 50, gap = 10;
         int gx = mx + (mw - (kw * 3 + gap * 2)) / 2;
-        int gy = my + 154;
+        int gy = my + 132;
         static const char *keys[12] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "DEL"};
 
         for (int i = 0; i < 12; ++i) {
@@ -3201,8 +3459,23 @@ bool hud_handle_touch_down(hud_ui_state_t *ui, gt7_client_t *client, gt7_state_t
             }
         }
 
-        int by = gy + 4 * (kh + gap) + 6;
-        if (x >= gx && x <= gx + 180 && y >= by && y <= by + 58) {
+        /* Dedicated Heartbeat Protocol Selector Row */
+        int proto_y = gy + 4 * (kh + gap) + 8;
+        int pw = 124, ph = 36, pgap = 10;
+        int px_start = mx + (mw - (pw * 4 + pgap * 3)) / 2;
+        int proto_btn_y = proto_y + 16;
+        if (y >= proto_btn_y && y <= proto_btn_y + ph) {
+            for (int p = 0; p < 4; ++p) {
+                int px = px_start + p * (pw + pgap);
+                if (x >= px && x <= px + pw) {
+                    gt7_set_heartbeat_mode(client, (gt7_heartbeat_mode_t)p);
+                    return true;
+                }
+            }
+        }
+
+        int by = proto_btn_y + ph + 16;
+        if (x >= gx && x <= gx + 180 && y >= by && y <= by + 52) {
             /* AUTO DETECT (DEFAULT) */
             gt7_set_auto_detect(client, state);
             strncpy(ui->edit_ip, "AUTO", sizeof(ui->edit_ip) - 1);
@@ -3210,7 +3483,7 @@ bool hud_handle_touch_down(hud_ui_state_t *ui, gt7_client_t *client, gt7_state_t
             ui->show_ip_modal = false;
             return true;
         }
-        if (x >= gx + 192 && x <= gx + 352 && y >= by && y <= by + 58) {
+        if (x >= gx + 192 && x <= gx + 352 && y >= by && y <= by + 52) {
             /* MANUAL IP */
             if (ui->ip_cursor >= 7 && strcasecmp(ui->edit_ip, "AUTO") != 0) {
                 gt7_set_ip(client, ui->edit_ip);
@@ -3220,7 +3493,7 @@ bool hud_handle_touch_down(hud_ui_state_t *ui, gt7_client_t *client, gt7_state_t
             ui->show_ip_modal = false;
             return true;
         }
-        if (x >= gx + 364 && x <= gx + 484 && y >= by && y <= by + 58) {
+        if (x >= gx + 364 && x <= gx + 488 && y >= by && y <= by + 52) {
             /* CANCEL */
             snprintf(ui->edit_ip, sizeof(ui->edit_ip), "%s", client->ps5_ip);
             ui->ip_cursor = (int)strlen(ui->edit_ip);
@@ -3247,8 +3520,18 @@ bool hud_handle_touch_down(hud_ui_state_t *ui, gt7_client_t *client, gt7_state_t
     }
 
     if (show_bars) {
-        /* Top Bar Touch Actions: [RESET LAPS] [FULLSCREEN] [EXIT APP] */
+        /* Top Bar Touch Actions: [PROTOCOL / IP MODAL] [RESET LAPS] [FULLSCREEN] [EXIT APP] */
         if (y <= 42) {
+            if (x >= 220 && x <= 750) {
+                if (client->auto_detect && strcmp(client->ps5_ip, "AUTO") == 0) {
+                    snprintf(ui->edit_ip, sizeof(ui->edit_ip), "%s.", client->subnet_prefix);
+                } else {
+                    snprintf(ui->edit_ip, sizeof(ui->edit_ip), "%s", client->ps5_ip);
+                }
+                ui->ip_cursor = (int)strlen(ui->edit_ip);
+                ui->show_ip_modal = true;
+                return true;
+            }
             if (x >= 835 && x <= 970) {
                 gt7_reset_session(state);
                 return true;

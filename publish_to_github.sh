@@ -8,84 +8,77 @@ REPO_NAME="gt7-switch-sim-ddu"
 echo "=== 檢查 GitHub 公開儲存庫: $REPO_NAME ==="
 gh repo create "$REPO_NAME" --public --source=. --remote=origin --push --description "PS5 Gran Turismo 7 Sim Racing DDU for Nintendo Switch (Atmosphère Homebrew .nro) with 8 motorsport modes & luxury EV cockpits" || true
 
-TAG_NAME="v1.10.30.0005"
-TITLE="GT7 Switch Sim-DDU Pro _aw_1.10.30.0005 (Full Telemetry Coverage & Zero-Blank Across All 8 Themes & EV Modes)"
+TAG_NAME="v1.10.30.1350"
+TITLE="GT7 Switch Sim-DDU Pro _aw_1.10.30.1350 (Authentic Full-Screen & Modern Vector Typography Overhaul for Benz, BMW, Audi, Volvo)"
 
 NOTES=$(cat << 'EOF'
-## 🏁 GT7 Switch Sim-DDU Pro _aw_1.10.30.0005
+## 🏁 GT7 Switch Sim-DDU Pro _aw_1.10.30.1350
 
-### 🌟 全風格面板零空白優化與 2026 UDP 協定全功能覆蓋 (Zero-Blank & 100% Protocol Matrix Coverage)
+### 🌟 豪華旗艦電車儀表 100% 全滿版與現代原廠向量字體極致重構 (Authentic Full-Screen & OEM Vector Typography Overhaul)
 
-針對全系統 8 大賽車主題模式與 4 款旗艦豪華電動車儀表（Mercedes-Benz MBUX EQ、BMW i-Curved M OS 8.5/9、Audi Sport RS Virtual Cockpit、Volvo EX90 Google Built-in）進行地毯式檢視與全滿版 OLED 黑色空間優化，確保所有 2026 最新封包欄位（Packet A, B, ~, C）在各風格中皆有專屬對應資訊卡，且排版零重疊、文字零截斷、邊界零溢出：
+針對使用者回饋與最新 Mercedes-Benz MBUX EQ、BMW i-Curved M (OS 8.5/9)、Audi Sport RS Virtual Cockpit、Volvo EX90 Google Built-in 實車儀表照片，進行全面視覺重構與細節對齊：
 
-1. **Mode 1: Official GT7 Native HUD & MFD**:
-   - 整合 Packet C 車輛分級標籤 (`[GR3]`, `[GR4]`, `[GR1]`, `[GRB]`, `[ROAD]`)
-   - 四輪路面接觸型態即時徽章 (`[T]` 瀝青, `[C]` 路緣石, `[D]` 砂石, `[G]` 草地, `[S]` 雪地) 與四輪打滑率 (Slip Ratio)
-   - 交互式 4 頁切換 MFD 賽道雷達、即時 S1/S2/S3 分段區間時速與時間。
+1. **全新原廠現代幾何向量字型引擎 (Modern Luxury Automotive Vector Typography)**：
+   - 徹底捨棄復古 7 段 LED 數位傾斜字體，自主實作 `draw_modern_char` 與 `draw_modern_number_centered` 原廠級無襯線向量字型。
+   - 筆畫粗細均勻（6~8px）、幾何圓角與倒角過渡平滑，完美還原各車廠最新數位儀表之高品質質感。
 
-2. **Mode 2: High-Resolution DigiTach Motorsport DDU**:
-   - 填補中柱踏板下方之空白區域，建立專屬「車輛動態與底盤遙測卡」
-   - 納入 3 軸加速度與慣性數據（G-Load, Sway, Heave, Surge）、前輪真實轉向角（`STEER %+.1f DEG`）、車身離地高度（`RIDE %.0fMM`）以及動能回充／下壓力（`AERO / HYBRID`）與最速紀錄。
+2. **Mercedes-Benz MBUX EQ (雙 492px 巨型類比圓錶 + 電幻地平線浪湧)**：
+   - 雙圓直徑擴大至 492px，幾近貼合螢幕垂直高度，內部配置 72 道星芒放射線與高精度刻度。
+   - 中間全面鋪設平滑漸層電幻地平線藍光（Electric Blue Horizon Wave）。
+   - 頂部現代向量時速與 ADAS 駕駛輔助陣列（車距雷達、車道維持、雙手方向盤、限速 50）。
+   - "From Reset" 航程卡精緻半透明磨砂深藍玻璃，呈現油量、均速、單圈時間、里程與綠色 ECO 綠葉圖示。
+   - 右錶外側配置真實 MBUX 直列式 R/N/D 檔位柱、大型白色 P/D 檔位與 `[ C ]` / `[ S ]` 動態駕駛模式膠囊。
+   - 下方配置 3 人座安全帶就座圖形卡與 4MATIC AWD 四驅扭力比、四輪胎溫及路面接地徽章。
 
-3. **Mode 3: Luxury EV Digital Cockpit (Benz, BMW, Audi, Volvo)**:
-   - **Mercedes-Benz MBUX EQ**: 左右雙類比大圓（直徑佔滿螢幕高度）、"From Reset" 航程資訊、4MATIC AWD 扭力分配卡，並新增四輪 TPMS 胎溫與路面接觸型態即時監測。
-   - **BMW i-Curved M Display**: 對稱式雙箭頭外側翼新增左右獨立 TPMS 胎溫卡（FL/RL 與 FR/RR）、M xDrive AWD 扭力分配及前輪轉向角。
-   - **Audi Sport RS Virtual Cockpit**: 跑道式階梯轉速表下新增 RS Quattro e-tron AWD 功率與扭力矩陣、專屬 RS 四輪胎溫卡及路面接觸狀態。
-   - **Volvo EX90 Google Built-in**: 3D 俯視導航地圖左下方新增 Trip 圈數名次與四輪胎溫及全時四驅分配。
+3. **BMW i-Curved M Display (100% 全螢幕 3D 街區導航地圖 + 對稱式幾何雙箭頭)**：
+   - 導航地圖全面擴展至 1280px 全螢幕邊緣（消除兩側黑邊與突兀黑框），支援透視路網、交錯市區大道與路徑航點。
+   - 左右雙箭頭覆蓋半透明深藍結晶磨砂背板，左箭頭鑲嵌現代向量時速與 km/h 標籤；右箭頭鑲嵌現代大字檔位（P / D / R）、READY 0、即時功率（+481 kW）與傾斜 ADAPTIVE 駕駛模式。
+   - 底部完整對齊原廠狀態列：總里程 465 km、時間 10:49、歐規圓形紅框速限 `(50)`、俯視車輛底盤圖標、車外溫度 `+ 19.0 °C` 與高壓電池電量條。
 
-4. **Mode 4: F1 W14 / Super Formula Wheel Display**:
-   - 左側 Timing 框加入 S1/S2/S3 分段區間時間。
-   - 中柱頂部顯示車輛分級與前輪轉向角，優化 RPM 字級徹底杜絕重疊。
-   - 右欄擴增 F1 ERS / Hybrid Energy Deployment 充放電進度條與 MGU-K 即時功率。
+4. **Audi Sport RS Virtual Cockpit (RS 階梯跑道轉速表 + 雙圓形 Power/Torque 儀表)**：
+   - 階梯跑道式轉速表（Runway Hockey-stick）尺寸大幅擴展，精準繪製斜坡 READY 1 2 3 與水平 4 5 6 7 8 轉速刻度及 7-8k 紅線區。
+   - 彎角核心配置現代巨型向量時速，下方配置 RS 簽名檔位（R AUTO / D AUTO / S 6 DYNAMIC）。
+   - 右側雙獨立圓形儀表：Power % 與 Torque % 具備外圈青綠飾環、內圈刻度與底部紅色指針，下方配置橫向分段 `MIN BOOST MAX` 增壓條與 RS QUATTRO e-tron AWD 性能卡。
+   - 左側完整配置日期時間（`10:43 AM Wednesday 11.3.2026`）、機油溫度條與專屬 RS 四輪 TPMS 胎面卡。
 
-5. **Mode 5: GT3 MoTeC C1212 Endurance Dash**:
-   - 重構右欄「ENDURANCE FUEL & VITALS」為雙欄精準對稱排版：獨立顯示油量、剩餘圈數、渦輪增壓、水溫、機油油溫油壓、變速箱油溫、尾速、下壓力與車身側傾（SWAY），完美錯開下方 TC / ABS 警示按鈕。
-
-6. **Mode 6: WRC Rally Gr.B Stage Cockpit**:
-   - 左側渦輪錶加入 Peak 峰值增壓、ALS 偏時點火狀態與目前賽段路面類型標籤。
-   - 中柱巨型檔位下方顯示前輪轉向角與 4WD 扭力分配（AWD 50:50）。
-   - 右側傾角儀面板補齊 3 軸衝擊加速度（SURGE, HEAVE, SWAY）與轉向角速度。
-
-7. **Mode 7: JDM Defi Analog Cluster**:
-   - 左側 Defi 增壓錶補齊 Peak 峰值保持與負壓抽氣數值。
-   - 中柱指針轉速表頂部配置前輪轉向角與 ROAD SPEC 標籤。
-   - 右側 Advance ZD 多功能儀表加入即時單圈 Delta 與極速紀錄。
-
-8. **Mode 8: Track Info & Race Engineer Mode**:
-   - 頂部遙測摘要條精簡排版並納入前輪轉向角與車輛分級徽章。
-   - 底部進站策略計算欄位整合平均胎溫、路面接觸與側傾加速度。
+5. **Volvo EX90 / Polestar (Google Built-in 100% 邊緣到邊緣全景導航 + 雙弧儀表)**：
+   - 3D Google Maps 透視地圖橫跨 0 至 1280px，標註真實街道名稱（Granville St、Oak St、W 49th Ave、W 57th Ave）、青藍色 "Devonshire park" 公園多邊形與 Google 識別商標。
+   - 左右緊貼螢幕外緣配置外拱形 0~200 時速弧與 Power/Charge 動能弧。
+   - 雙懸浮圓角磨砂玻璃艙：左艙配置白底黑字方框速限 `[20]` 與現代向量時速；右艙配置綠色 READY、大型檔位 D、直列 R/N/D/-B+ 檔位柱與 power/charge 刻度。
+   - 底部配置雙動態續航條（電池 264 km、燃油 356 km）與 Volvo Trip 遙測摘要。
 
 ---
 
 ### 🇹🇼 繁體中文
-- **全風格面板零空白與協定功能全面實裝 (v1.10.30.0005)**：
-  - 8 大主題與 4 款旗艦電車儀表全數優化，徹底消除空白區域。
-  - 純黑色 OLED (`#000000`) 高對比渲染，字型與介面元件無遮擋、無重疊。
-  - 支援 Packet A, B, ~, C 之所有已知 2026 遙測欄位（四元數姿態、四輪胎面型態、前輪轉向角、動能回充、扭力分配、軸距與分級）。
+- **旗艦電車儀表 100% 全滿版與現代原廠向量字體重構 (v1.10.30.1350)**：
+  - 4 款旗艦電車儀表全數消除兩側黑邊，BMW 與 Volvo 具備滿版 1280px 3D 導航透視地圖。
+  - 導入專屬現代原廠無襯線向量數字（draw_modern_char），終結復古 LED 粗糙感。
+  - Benz MBUX、BMW iDrive、Audi Virtual Cockpit、Volvo EX90 之檔位、功率、胎面、四驅分配完全契合實車邏輯。
+  - 純黑色 OLED (`#000000`) 零文字重疊與全滿版沉浸式渲染。
 
 ---
 
 ### 🇬🇧 English
-- **Full Telemetry Coverage & Zero-Blank Across All 8 Themes & EV Modes (v1.10.30.0005)**:
-  - System-wide optimization across all 8 racing themes and 4 luxury EV cockpits (Benz, BMW, Audi, Volvo).
-  - All blank areas populated with high-value telemetry: 3-axis acceleration (Sway, Heave, Surge), contact patch surfaces (`[T]`, `[C]`, `[D]`, `[G]`, `[S]`), steering angles, aero downforce, and hybrid kW.
-  - Zero text overlap and pure OLED `#000000` background verified across every single screen.
+- **Authentic Full-Screen & Modern Vector Typography Overhaul for Benz, BMW, Audi, Volvo (v1.10.30.1350)**:
+  - 100% full-bleed canvas utilization across all 4 luxury EV cockpits: edge-to-edge 1280px 3D navigation maps for BMW and Volvo, enlarged 492px dials with horizon glow for Benz, and expanded runway with dual circular pods for Audi.
+  - Custom OEM modern automotive vector typography replacing 7-segment digital font with clean, proportional luxury aesthetics.
+  - Authentic transmission selectors, live hybrid recovery/power kW, AWD torque splits, and surface contact badges (`[T]`, `[C]`, `[D]`, `[G]`, `[S]`).
 
 ---
 
 ### 🇯🇵 日本語
-- **全8テーマ＆EVコクピットの空白ゼロ最適化とテレメトリ全機能実装 (v1.10.30.0005)**:
-  - 全8種のレーシングテーマおよび4種の高級EVコクピット（Benz、BMW、Audi、Volvo）を徹底検証。
-  - すべての余白スペースに最新パケット（A/B/~/C）の有益なテレメトリ（3軸加速度、路面接地タイプ、前輪舵角、回生電力、エアロダウンフォース）を配置。
-  - 完全なOLEDブラック背景と重なりのない美麗なフォントレイアウトを実現。
+- **Benz、BMW、Audi、Volvoの全画面100%表示と最新OEMベクターフォント刷新 (v1.10.30.1350)**:
+  - BMWおよびVolvoに横幅1280pxの全画面3Dナビゲーションマップを実装し、余白ブラックアウトを完全解消。
+  - レトロな7セグメントLEDを廃止し、最新の高級車専用モダンベクターフォントを新設。
+  - Benz MBUXの大径492pxメーター、Audi SportのRS滑走路タコメーター＆Power/Torque2連ポッド、VolvoのGoogle Built-inフロートガラスポッドを実車に忠実に再現。
 
 ---
 
 ### 🇩🇪 Deutsch
-- **Vollständige Telemetrie-Abdeckung & Null-Leerraum-Optimierung (v1.10.30.0005)**:
-  - Umfassende Optimierung aller 8 Rennthemen und 4 Luxus-EV-Cockpits (Benz, BMW, Audi, Volvo).
-  - Beseitigung aller ungenutzten Bildschirmbereiche durch gezielte Anzeige von 3-Achsen-Beschleunigung, Fahrbahnoberfläche, Lenkwinkel, Allrad-Drehmoment und ERS/Hybrid-Leistung.
-  - Reines OLED-Schwarz (`#000000`) ohne Textüberlappungen auf allen 13 Bildschirmmodi.
+- **Authentische Vollbild- & moderne Vektor-Typografie-Überarbeitung für Benz, BMW, Audi, Volvo (v1.10.30.1350)**:
+  - Vollständige 100% Bildschirmausnutzung (1280px) für BMW i-Curved und Volvo EX90 mit randlosem 3D-Kartennetzwerk.
+  - Elegante moderne OEM-Vektor-Typografie anstelle veralteter 7-Segment-LED-Ziffern.
+  - Präzise Abbildung der echten Getriebewahlhebel, Allrad-Drehmomentverteilung (4MATIC, xDrive, Quattro) und 4-Rad-TPMS-Reifenoberflächen.
 EOF
 )
 

@@ -13,7 +13,7 @@ extern "C" {
 #define GT7_RECV_PORT 33740
 #define GT7_MAGIC_G7S0 0x47375330U
 
-#define GT7_APP_VERSION "_aw_1.10.30.0005"
+#define GT7_APP_VERSION "_aw_1.10.30.1350"
 
 #define GT7_TRACE_LEN 160
 #define GT7_TRACK_PTS 500

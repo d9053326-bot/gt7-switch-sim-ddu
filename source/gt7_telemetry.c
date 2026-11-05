@@ -2,6 +2,8 @@
 #include "salsa20.h"
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
 #include <string.h>
 #include <math.h>
 #include <unistd.h>
@@ -152,6 +154,12 @@ bool gt7_decrypt_packet(const uint8_t *raw, size_t len, uint8_t *decrypted_out) 
         return false;
     }
 
+    /* Support unencrypted GT7 packets forwarded by PC SimHub / GT7 UDP Proxy */
+    if (read_u32_le(raw, 0x00) == GT7_MAGIC_G7S0) {
+        memcpy(decrypted_out, raw, len);
+        return true;
+    }
+
     uint32_t iv1 = read_u32_le(raw, 0x40);
 
     /* Format-specific Salsa20 nonce XOR constant:
@@ -235,6 +243,7 @@ bool gt7_init(gt7_client_t *client, gt7_state_t *state, const char *ps5_ip) {
     memset(client, 0, sizeof(*client));
     memset(state, 0, sizeof(*state));
     client->sock_fd = -1;
+    client->simhub_sock_fd = -1;
     state->demo_mode = true;
     client->tracked_lap = -1;
     client->scan_cursor = 1;
@@ -277,6 +286,25 @@ bool gt7_init(gt7_client_t *client, gt7_state_t *state, const char *ps5_ip) {
         /* Socket remains usable for outbound heartbeats */
     }
 
+    /* Also open secondary non-blocking UDP socket on port 20777 for PC SimHub / Codemasters / Forza UDP */
+    client->simhub_sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (client->simhub_sock_fd >= 0) {
+        setsockopt(client->simhub_sock_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+        int sh_flags = fcntl(client->simhub_sock_fd, F_GETFL, 0);
+        if (sh_flags >= 0) {
+            fcntl(client->simhub_sock_fd, F_SETFL, sh_flags | O_NONBLOCK);
+        }
+        struct sockaddr_in sh_bind;
+        memset(&sh_bind, 0, sizeof(sh_bind));
+        sh_bind.sin_family = AF_INET;
+        sh_bind.sin_port = htons(SIMHUB_RECV_PORT);
+        sh_bind.sin_addr.s_addr = htonl(INADDR_ANY);
+        if (bind(client->simhub_sock_fd, (struct sockaddr *)&sh_bind, sizeof(sh_bind)) < 0) {
+            close(client->simhub_sock_fd);
+            client->simhub_sock_fd = -1;
+        }
+    }
+
     return true;
 }
 
@@ -313,9 +341,10 @@ void gt7_cycle_heartbeat_mode(gt7_client_t *client) {
 
 const char *gt7_heartbeat_mode_name(gt7_heartbeat_mode_t mode) {
     switch (mode) {
-        case GT7_HEARTBEAT_AUTO:      return "AUTO (ADAPTIVE)";
+        case GT7_HEARTBEAT_AUTO:      return "AUTO (PS5+PC)";
         case GT7_HEARTBEAT_PKT_C:     return "PKT C (368B)";
         case GT7_HEARTBEAT_PKT_TILDE: return "PKT ~ (344B)";
+        case GT7_HEARTBEAT_SIMHUB:    return "PC SIMHUB";
         case GT7_HEARTBEAT_PKT_A:     return "PKT A (296B)";
         case GT7_HEARTBEAT_PKT_B:     return "PKT B (316B)";
         default:                      return "AUTO";
@@ -324,6 +353,11 @@ const char *gt7_heartbeat_mode_name(gt7_heartbeat_mode_t mode) {
 
 static void gt7_send_heartbeat(gt7_client_t *client, bool connected) {
     if (client->sock_fd < 0) return;
+    if (client->heartbeat_mode == GT7_HEARTBEAT_SIMHUB) {
+        /* PC SimHub pushes UDP directly to Switch/Host (:20777 or :33740), no PS5 heartbeat needed */
+        client->active_hb_char = 'S';
+        return;
+    }
 
     /* Select heartbeat byte based on configured mode or active theme */
     char hb_char = 'C';
@@ -735,6 +769,570 @@ static void gt7_parse_decrypted(gt7_client_t *client, gt7_state_t *state, const 
     state->trace_head = (state->trace_head + 1) % GT7_TRACE_LEN;
 }
 
+/* =========================================================================
+ * PC SIMHUB TELEMETRY PARSER (JSON / Key-Value, Forza Data Out, Codemasters)
+ * ========================================================================= */
+static int32_t parse_simhub_time_ms(const char *val_str) {
+    if (!val_str || !*val_str) return 0;
+    /* Support "00:01:31.428" or "01:31.428" formatted strings from SimHub */
+    const char *colon1 = strchr(val_str, ':');
+    if (colon1) {
+        const char *colon2 = strchr(colon1 + 1, ':');
+        if (colon2) {
+            int hrs = atoi(val_str);
+            int mins = atoi(colon1 + 1);
+            float secs = strtof(colon2 + 1, NULL);
+            return (int32_t)((hrs * 3600 + mins * 60) * 1000 + (int)(secs * 1000.0f));
+        } else {
+            int mins = atoi(val_str);
+            float secs = strtof(colon1 + 1, NULL);
+            return (int32_t)(mins * 60000 + (int)(secs * 1000.0f));
+        }
+    }
+    float f = strtof(val_str, NULL);
+    if (!isfinite(f)) return 0;
+    /* If value is small (e.g. 91.428 seconds), convert seconds to ms; if >= 500, treat as ms */
+    if (fabsf(f) > 0.0001f && fabsf(f) < 600.0f && strchr(val_str, '.') != NULL) {
+        return (int32_t)(f * 1000.0f);
+    }
+    return (int32_t)f;
+}
+
+static void simhub_post_process(gt7_client_t *client, gt7_state_t *state, uint32_t now_ms) {
+    state->connected = true;
+    state->demo_mode = false;
+    state->last_rx_ms = now_ms;
+    state->is_simhub = true;
+    state->rx_packet_type = 'S';
+    state->has_packet_b = true;
+    state->has_packet_c = true;
+    state->has_packet_tilde = true;
+    client->hb_fail_count = 0;
+
+    if (!state->demo_mode && !state->track_live_cleared && (fabsf(state->pos_x) > 0.1f || fabsf(state->pos_z) > 0.1f)) {
+        state->track_pt_count = 0;
+        state->track_pt_head = 0;
+        state->track_min_x = state->pos_x - 10.0f;
+        state->track_max_x = state->pos_x + 10.0f;
+        state->track_min_z = state->pos_z - 10.0f;
+        state->track_max_z = state->pos_z + 10.0f;
+        state->track_is_closed = false;
+        state->track_live_cleared = true;
+        client->has_sample_pos = false;
+        if (state->circuit_name[0] == '\0' || strncmp(state->circuit_name, "SUZUKA", 6) == 0) {
+            strncpy(state->circuit_name, "PC SIMHUB LIVE CIRCUIT", sizeof(state->circuit_name) - 1);
+        }
+    }
+
+    if (state->rpm_limiter < 1000) state->rpm_limiter = 8800;
+    if (state->rpm_warning < 1000) state->rpm_warning = (uint16_t)(state->rpm_limiter * 0.88f);
+    if (state->speed_kmh > state->session_top_speed_kmh) {
+        state->session_top_speed_kmh = state->speed_kmh;
+    }
+    if (state->speed_kmh > client->lap_top_speed) {
+        client->lap_top_speed = state->speed_kmh;
+    }
+    if (state->brake_pct > state->peak_brake_pct) {
+        state->peak_brake_pct = state->brake_pct;
+    } else {
+        state->peak_brake_pct *= 0.996f;
+    }
+    if (state->turbo_bar > state->peak_turbo_bar) {
+        state->peak_turbo_bar = state->turbo_bar;
+    }
+
+    uint16_t flags = GT7_FLAG_IN_RACE | GT7_FLAG_IN_GEAR | GT7_FLAG_HAS_TURBO | GT7_FLAG_LIGHTS_ACTIVE | GT7_FLAG_LOW_BEAM;
+    if (state->engine_rpm >= (float)state->rpm_warning) {
+        flags |= GT7_FLAG_REV_BLINK;
+    }
+    state->flags |= flags;
+
+    /* Derive aerodynamic downforce, wheel rad/s, and hybrid/EV power if not explicitly sent */
+    float spd_norm = state->speed_kmh / 300.0f;
+    if (state->downforce_front_kg <= 0.1f && state->speed_kmh > 10.0f) {
+        state->downforce_front_kg = 210.0f * spd_norm * spd_norm;
+        state->downforce_rear_kg  = 375.0f * spd_norm * spd_norm;
+    }
+    if (state->wheel_base_m <= 0.5f) state->wheel_base_m = 2.72f;
+    if (state->body_height <= 1.0f)  state->body_height  = 56.0f - state->g_lon * 4.5f;
+    if (state->water_temp <= 1.0f)   state->water_temp   = 88.0f;
+    if (state->oil_temp <= 1.0f)     state->oil_temp     = 102.0f;
+    if (state->oil_pressure <= 0.1f) state->oil_pressure = 4.5f + 2.0f * (state->engine_rpm / (float)state->rpm_limiter);
+    if (state->car_category[0] == '\0') strncpy(state->car_category, "SIM", sizeof(state->car_category) - 1);
+    for (int i = 0; i < 4; ++i) {
+        if (state->surface_type[i] == 0) state->surface_type[i] = 'T';
+        if (state->tire_radius[i] <= 0.05f) state->tire_radius[i] = 0.33f;
+        if (fabsf(state->wheel_angular_speed[i]) <= 0.01f && state->speed_ms > 0.1f) {
+            state->wheel_angular_speed[i] = (state->speed_ms / state->tire_radius[i]) * (1.0f + state->tire_slip_ratio[i]);
+        }
+        state->tire_rps[i] = fabsf(state->wheel_angular_speed[i]) / (2.0f * (float)M_PI);
+        if (state->susp_height[i] <= 0.1f) {
+            state->susp_height[i] = 60.0f + ((i < 2) ? (state->g_lon * 6.0f) : (-state->g_lon * 6.0f));
+        }
+        if (state->tire_temp[i] <= 1.0f) {
+            state->tire_temp[i] = 82.0f;
+        }
+    }
+
+    /* Record 2D GPS Circuit coordinate if SimHub provides world X/Z */
+    if (!state->demo_mode && state->speed_kmh > 8.0f && (fabsf(state->pos_x) > 0.1f || fabsf(state->pos_z) > 0.1f)) {
+        float dx = client->has_sample_pos ? (state->pos_x - client->last_sample_x) : 999.0f;
+        float dz = client->has_sample_pos ? (state->pos_z - client->last_sample_z) : 999.0f;
+        float dist_sq = dx * dx + dz * dz;
+        if (!client->has_sample_pos || dist_sq >= 225.0f || (now_ms - client->last_track_sample_ms >= 400 && dist_sq >= 16.0f)) {
+            bool is_teleport = (client->has_sample_pos && dist_sq > 62500.0f);
+            int h = state->track_pt_head;
+            state->track_pts[h].x = state->pos_x;
+            state->track_pts[h].z = state->pos_z;
+            state->track_pts[h].speed_kmh = state->speed_kmh;
+            state->track_pts[h].pedal_state = (state->brake_pct > 20.0f) ? 2 : ((state->throttle_pct > 50.0f) ? 1 : 0);
+            state->track_pts[h].segment_break = is_teleport ? 1 : 0;
+            state->track_pt_head = (h + 1) % GT7_TRACK_PTS;
+            if (state->track_pt_count < GT7_TRACK_PTS) state->track_pt_count++;
+            if (!is_teleport) {
+                if (state->pos_x < state->track_min_x) state->track_min_x = state->pos_x;
+                if (state->pos_x > state->track_max_x) state->track_max_x = state->pos_x;
+                if (state->pos_z < state->track_min_z) state->track_min_z = state->pos_z;
+                if (state->pos_z > state->track_max_z) state->track_max_z = state->pos_z;
+            }
+            client->last_sample_x = state->pos_x;
+            client->last_sample_z = state->pos_z;
+            client->has_sample_pos = true;
+            client->last_track_sample_ms = now_ms;
+        }
+    }
+
+    state->trace_throttle[state->trace_head] = state->throttle_pct;
+    state->trace_brake[state->trace_head]    = state->brake_pct;
+    state->trace_speed[state->trace_head]    = state->speed_kmh;
+    state->trace_head = (state->trace_head + 1) % GT7_TRACE_LEN;
+}
+
+static void simhub_apply_kv(gt7_state_t *state, const char *key, const char *val) {
+    if (!key || !*key || !val || !*val) return;
+    float fval = strtof(val, NULL);
+    if (!isfinite(fval)) fval = 0.0f;
+
+    if (strcasecmp(key, "rpm") == 0 || strcasecmp(key, "Rpms") == 0 || strcasecmp(key, "EngineRpm") == 0) {
+        state->engine_rpm = fval;
+    } else if (strcasecmp(key, "max_rpm") == 0 || strcasecmp(key, "MaxRpm") == 0) {
+        if (fval > 500.0f) state->rpm_limiter = (uint16_t)fval;
+    } else if (strcasecmp(key, "warn_rpm") == 0 || strcasecmp(key, "redline") == 0 || strcasecmp(key, "ShiftLightRpm") == 0 || strcasecmp(key, "CarSettings_CurrentGearRedLineRPM") == 0) {
+        if (fval > 500.0f) state->rpm_warning = (uint16_t)fval;
+    } else if (strcasecmp(key, "speed_kmh") == 0 || strcasecmp(key, "SpeedKmh") == 0 || strcasecmp(key, "speed") == 0) {
+        state->speed_kmh = fval;
+        state->speed_ms  = fval / 3.6f;
+        state->speed_mph = state->speed_ms * 2.236936f;
+    } else if (strcasecmp(key, "speed_mph") == 0 || strcasecmp(key, "SpeedMph") == 0) {
+        state->speed_mph = fval;
+        state->speed_ms  = fval / 2.236936f;
+        state->speed_kmh = state->speed_ms * 3.6f;
+    } else if (strcasecmp(key, "gear") == 0 || strcasecmp(key, "Gear") == 0) {
+        if (val[0] == 'R' || val[0] == 'r') state->current_gear = 0;
+        else if (val[0] == 'N' || val[0] == 'n' || val[0] == 'P' || val[0] == 'p') state->current_gear = -1;
+        else {
+            int g = atoi(val);
+            state->current_gear = (g == 0 && val[0] == '0') ? -1 : g;
+        }
+    } else if (strcasecmp(key, "suggested_gear") == 0 || strcasecmp(key, "sug_gear") == 0 || strcasecmp(key, "SuggestedGear") == 0) {
+        state->suggested_gear = atoi(val);
+    } else if (strcasecmp(key, "throttle") == 0 || strcasecmp(key, "Throttle") == 0) {
+        state->throttle_pct = fval;
+        if (state->throttle_pct > 100.0f) state->throttle_pct = 100.0f;
+        state->throttle_filtered = state->throttle_pct;
+    } else if (strcasecmp(key, "brake") == 0 || strcasecmp(key, "Brake") == 0) {
+        state->brake_pct = fval;
+        if (state->brake_pct > 100.0f) state->brake_pct = 100.0f;
+        state->brake_filtered = state->brake_pct;
+    } else if (strcasecmp(key, "clutch") == 0 || strcasecmp(key, "Clutch") == 0) {
+        state->clutch_pct = fval;
+    } else if (strcasecmp(key, "fuel_pct") == 0 || strcasecmp(key, "FuelPercent") == 0) {
+        state->fuel_pct = fval;
+        if (state->fuel_capacity <= 0.1f) state->fuel_capacity = 100.0f;
+        state->fuel_level = (state->fuel_pct / 100.0f) * state->fuel_capacity;
+    } else if (strcasecmp(key, "fuel") == 0 || strcasecmp(key, "Fuel") == 0) {
+        state->fuel_level = fval;
+        if (state->fuel_capacity > 0.1f) state->fuel_pct = (state->fuel_level / state->fuel_capacity) * 100.0f;
+        else state->fuel_pct = fval;
+    } else if (strcasecmp(key, "fuel_capacity") == 0 || strcasecmp(key, "fuel_cap") == 0 || strcasecmp(key, "MaxFuel") == 0) {
+        if (fval > 0.1f) {
+            state->fuel_capacity = fval;
+            if (state->fuel_level > 0.0f) state->fuel_pct = (state->fuel_level / state->fuel_capacity) * 100.0f;
+        }
+    } else if (strcasecmp(key, "fuel_burn") == 0 || strcasecmp(key, "FuelPerLap") == 0) {
+        state->fuel_burn_per_lap = fval;
+    } else if (strcasecmp(key, "turbo_bar") == 0 || strcasecmp(key, "Turbo") == 0 || strcasecmp(key, "boost") == 0) {
+        state->turbo_bar = fval;
+    } else if (strcasecmp(key, "water_temp") == 0 || strcasecmp(key, "WaterTemperature") == 0) {
+        state->water_temp = fval;
+    } else if (strcasecmp(key, "oil_temp") == 0 || strcasecmp(key, "OilTemperature") == 0) {
+        state->oil_temp = fval;
+    } else if (strcasecmp(key, "oil_pressure") == 0 || strcasecmp(key, "oil_press") == 0 || strcasecmp(key, "OilPressure") == 0) {
+        state->oil_pressure = fval;
+    } else if (strcasecmp(key, "tire_fl") == 0 || strcasecmp(key, "tyre_temp_fl") == 0 || strcasecmp(key, "TyreTemperatureFrontLeft") == 0) {
+        state->tire_temp[0] = fval;
+    } else if (strcasecmp(key, "tire_fr") == 0 || strcasecmp(key, "tyre_temp_fr") == 0 || strcasecmp(key, "TyreTemperatureFrontRight") == 0) {
+        state->tire_temp[1] = fval;
+    } else if (strcasecmp(key, "tire_rl") == 0 || strcasecmp(key, "tyre_temp_rl") == 0 || strcasecmp(key, "TyreTemperatureRearLeft") == 0) {
+        state->tire_temp[2] = fval;
+    } else if (strcasecmp(key, "tire_rr") == 0 || strcasecmp(key, "tyre_temp_rr") == 0 || strcasecmp(key, "TyreTemperatureRearRight") == 0) {
+        state->tire_temp[3] = fval;
+    } else if (strcasecmp(key, "slip_fl") == 0 || strcasecmp(key, "TyreSlipFrontLeft") == 0) {
+        state->tire_slip_ratio[0] = (fval > 1.5f) ? (fval / 100.0f) : fval;
+    } else if (strcasecmp(key, "slip_fr") == 0 || strcasecmp(key, "TyreSlipFrontRight") == 0) {
+        state->tire_slip_ratio[1] = (fval > 1.5f) ? (fval / 100.0f) : fval;
+    } else if (strcasecmp(key, "slip_rl") == 0 || strcasecmp(key, "TyreSlipRearLeft") == 0) {
+        state->tire_slip_ratio[2] = (fval > 1.5f) ? (fval / 100.0f) : fval;
+    } else if (strcasecmp(key, "slip_rr") == 0 || strcasecmp(key, "TyreSlipRearRight") == 0) {
+        state->tire_slip_ratio[3] = (fval > 1.5f) ? (fval / 100.0f) : fval;
+    } else if (strcasecmp(key, "susp_fl") == 0 || strcasecmp(key, "SuspensionFrontLeft") == 0) {
+        state->susp_height[0] = fval;
+    } else if (strcasecmp(key, "susp_fr") == 0 || strcasecmp(key, "SuspensionFrontRight") == 0) {
+        state->susp_height[1] = fval;
+    } else if (strcasecmp(key, "susp_rl") == 0 || strcasecmp(key, "SuspensionRearLeft") == 0) {
+        state->susp_height[2] = fval;
+    } else if (strcasecmp(key, "susp_rr") == 0 || strcasecmp(key, "SuspensionRearRight") == 0) {
+        state->susp_height[3] = fval;
+    } else if (strcasecmp(key, "lap") == 0 || strcasecmp(key, "CurrentLap") == 0) {
+        state->current_lap = (int16_t)atoi(val);
+    } else if (strcasecmp(key, "total_laps") == 0 || strcasecmp(key, "TotalLaps") == 0) {
+        state->total_laps = (int16_t)atoi(val);
+    } else if (strcasecmp(key, "pos") == 0 || strcasecmp(key, "Position") == 0) {
+        state->race_position = (int16_t)atoi(val);
+    } else if (strcasecmp(key, "total_cars") == 0 || strcasecmp(key, "cars") == 0 || strcasecmp(key, "OpponentsCount") == 0) {
+        state->total_cars = (int16_t)atoi(val);
+    } else if (strcasecmp(key, "cur_lap_ms") == 0 || strcasecmp(key, "CurrentLapTime") == 0) {
+        state->current_lap_ms = parse_simhub_time_ms(val);
+        state->current_lap_time_ms = state->current_lap_ms;
+    } else if (strcasecmp(key, "best_lap_ms") == 0 || strcasecmp(key, "BestLapTime") == 0) {
+        state->best_lap_ms = parse_simhub_time_ms(val);
+    } else if (strcasecmp(key, "last_lap_ms") == 0 || strcasecmp(key, "LastLapTime") == 0) {
+        state->last_lap_ms = parse_simhub_time_ms(val);
+    } else if (strcasecmp(key, "delta_ms") == 0 || strcasecmp(key, "delta_s") == 0 || strcasecmp(key, "DeltaToBest") == 0 || strcasecmp(key, "delta") == 0) {
+        state->delta_ms = parse_simhub_time_ms(val);
+    } else if (strcasecmp(key, "s1_ms") == 0 || strcasecmp(key, "Sector1Time") == 0) {
+        state->cur_sector_ms[0] = parse_simhub_time_ms(val);
+    } else if (strcasecmp(key, "s2_ms") == 0 || strcasecmp(key, "Sector2Time") == 0) {
+        state->cur_sector_ms[1] = parse_simhub_time_ms(val);
+    } else if (strcasecmp(key, "s3_ms") == 0 || strcasecmp(key, "Sector3Time") == 0) {
+        state->cur_sector_ms[2] = parse_simhub_time_ms(val);
+    } else if (strcasecmp(key, "g_lat") == 0 || strcasecmp(key, "sway") == 0 || strcasecmp(key, "AccelerationSway") == 0 || strcasecmp(key, "lat_g") == 0) {
+        state->g_lat = fval;
+        state->native_sway = fval;
+    } else if (strcasecmp(key, "g_lon") == 0 || strcasecmp(key, "surge") == 0 || strcasecmp(key, "AccelerationSurge") == 0 || strcasecmp(key, "lon_g") == 0) {
+        state->g_lon = fval;
+        state->native_surge = fval;
+    } else if (strcasecmp(key, "heave_g") == 0 || strcasecmp(key, "heave") == 0 || strcasecmp(key, "AccelerationHeave") == 0) {
+        state->native_heave = fval;
+    } else if (strcasecmp(key, "pitch") == 0 || strcasecmp(key, "OrientationPitch") == 0) {
+        state->pitch = fval;
+    } else if (strcasecmp(key, "roll") == 0 || strcasecmp(key, "OrientationRoll") == 0) {
+        state->roll = fval;
+    } else if (strcasecmp(key, "yaw") == 0 || strcasecmp(key, "OrientationYaw") == 0) {
+        state->yaw = fval;
+    } else if (strcasecmp(key, "steer") == 0 || strcasecmp(key, "steer_deg") == 0 || strcasecmp(key, "SteerAngle") == 0) {
+        state->steer_angle_fl_deg = fval;
+        state->steer_angle_fr_deg = fval;
+    } else if (strcasecmp(key, "pos_x") == 0 || strcasecmp(key, "CoordinatesX") == 0) {
+        state->pos_x = fval;
+    } else if (strcasecmp(key, "pos_y") == 0 || strcasecmp(key, "CoordinatesY") == 0) {
+        state->pos_y = fval;
+    } else if (strcasecmp(key, "pos_z") == 0 || strcasecmp(key, "CoordinatesZ") == 0) {
+        state->pos_z = fval;
+    } else if (strcasecmp(key, "energy_kw") == 0 || strcasecmp(key, "ers_power") == 0 || strcasecmp(key, "ERSPower") == 0 || strcasecmp(key, "RegenKw") == 0) {
+        state->energy_recovery_kw = fval;
+        state->energy_recovery_avail = true;
+    } else if (strcasecmp(key, "soc") == 0 || strcasecmp(key, "ers_pct") == 0 || strcasecmp(key, "BatterySOC") == 0) {
+        state->battery_soc_pct = fval;
+    } else if (strcasecmp(key, "track") == 0 || strcasecmp(key, "TrackName") == 0) {
+        strncpy(state->circuit_name, val, sizeof(state->circuit_name) - 1);
+        state->circuit_name[sizeof(state->circuit_name) - 1] = '\0';
+    } else if (strcasecmp(key, "category") == 0 || strcasecmp(key, "CarClass") == 0) {
+        strncpy(state->car_category, val, 4);
+        state->car_category[4] = '\0';
+    } else if (strcasecmp(key, "tcs") == 0 || strcasecmp(key, "TCLevel") == 0) {
+        state->gt7_tcs_level = atoi(val);
+    } else if (strcasecmp(key, "bb") == 0 || strcasecmp(key, "BrakeBias") == 0) {
+        state->gt7_brake_bal = atoi(val);
+    } else if (strcasecmp(key, "map") == 0 || strcasecmp(key, "FuelMap") == 0) {
+        state->gt7_fuel_map = atoi(val);
+    } else if (strcasecmp(key, "tcs_act") == 0 || strcasecmp(key, "TCActive") == 0) {
+        if (atoi(val) != 0 || strcasecmp(val, "true") == 0) state->flags |= GT7_FLAG_TCS_ACTIVE;
+        else state->flags &= (uint16_t)~GT7_FLAG_TCS_ACTIVE;
+    } else if (strcasecmp(key, "abs_act") == 0 || strcasecmp(key, "ABSActive") == 0) {
+        if (atoi(val) != 0 || strcasecmp(val, "true") == 0) state->flags |= GT7_FLAG_ASM_ACTIVE;
+        else state->flags &= (uint16_t)~GT7_FLAG_ASM_ACTIVE;
+    }
+}
+
+bool simhub_parse_packet(gt7_client_t *client, gt7_state_t *state, const uint8_t *raw, size_t len, uint32_t now_ms) {
+    if (!raw || len < 8) return false;
+
+    /* 1. Check for SimHub JSON ("{...}") or Key-Value ("SIMHUB:..." / "rpm=...;speed=...") */
+    size_t i = 0;
+    while (i < len && isspace(raw[i])) ++i;
+    if (i < len && (raw[i] == '{' || strncasecmp((const char *)(raw + i), "SIMHUB", 6) == 0 ||
+                    strncasecmp((const char *)(raw + i), "rpm=", 4) == 0)) {
+        char buf[2048];
+        size_t copy_len = (len < sizeof(buf) - 1) ? len : (sizeof(buf) - 1);
+        memcpy(buf, raw, copy_len);
+        buf[copy_len] = '\0';
+
+        int parsed_fields = 0;
+        char *p = buf;
+        while (*p) {
+            while (*p && (*p == '{' || *p == '}' || *p == ',' || *p == ';' || *p == '\r' || *p == '\n' || isspace((unsigned char)*p))) ++p;
+            if (!*p) break;
+
+            /* Extract key */
+            char *key = p;
+            if (*key == '"') {
+                ++key;
+                p = strchr(key, '"');
+                if (!p) break;
+                *p++ = '\0';
+            } else {
+                while (*p && *p != ':' && *p != '=' && *p != ',' && *p != ';' && !isspace((unsigned char)*p)) ++p;
+                if (*p == ':' || *p == '=') {
+                    *p++ = '\0';
+                } else if (*p) {
+                    *p++ = '\0';
+                }
+            }
+            while (*p && (*p == ':' || *p == '=' || isspace((unsigned char)*p))) ++p;
+            if (!*p) break;
+
+            /* Extract value */
+            char *val = p;
+            if (*val == '"') {
+                ++val;
+                p = strchr(val, '"');
+                if (!p) break;
+                *p++ = '\0';
+            } else {
+                while (*p && *p != ',' && *p != ';' && *p != '}' && *p != '\r' && *p != '\n') ++p;
+                if (*p) *p++ = '\0';
+            }
+
+            /* Strip trailing whitespace from unquoted value */
+            size_t vlen = strlen(val);
+            while (vlen > 0 && isspace((unsigned char)val[vlen - 1])) {
+                val[--vlen] = '\0';
+            }
+
+            if (key[0] && val[0]) {
+                simhub_apply_kv(state, key, val);
+                parsed_fields++;
+            }
+        }
+
+        if (parsed_fields >= 2) {
+            state->rx_packet_len = len;
+            strncpy(state->simhub_format, "SIMHUB JSON", sizeof(state->simhub_format) - 1);
+            simhub_post_process(client, state, now_ms);
+            return true;
+        }
+    }
+
+    /* 2. Check for SimHub / Forza Data Out Binary Packet (232 / 311 / 324 / 331 bytes) */
+    if (len == 232 || len == 311 || len == 324 || len == 331) {
+        int32_t is_race_on = read_i32_le(raw, 0x00);
+        float max_rpm = read_f32_le(raw, 0x08);
+        float cur_rpm = read_f32_le(raw, 0x10);
+        if ((is_race_on == 0 || is_race_on == 1) && isfinite(max_rpm) && isfinite(cur_rpm) &&
+            max_rpm >= 1000.0f && max_rpm <= 30000.0f && cur_rpm >= 0.0f && cur_rpm <= 30000.0f) {
+            state->rpm_limiter = (uint16_t)max_rpm;
+            state->rpm_warning = (uint16_t)(max_rpm * 0.88f);
+            state->engine_rpm  = cur_rpm;
+            state->g_lat = read_f32_le(raw, 0x14) / 9.80665f;
+            state->native_heave = read_f32_le(raw, 0x18) / 9.80665f;
+            state->g_lon = read_f32_le(raw, 0x1C) / 9.80665f;
+            state->native_sway  = state->g_lat;
+            state->native_surge = state->g_lon;
+            state->vel_x = read_f32_le(raw, 0x20);
+            state->vel_y = read_f32_le(raw, 0x24);
+            state->vel_z = read_f32_le(raw, 0x28);
+            state->yaw   = read_f32_le(raw, 0x38);
+            state->pitch = read_f32_le(raw, 0x3C) * (180.0f / (float)M_PI);
+            state->roll  = read_f32_le(raw, 0x40) * (180.0f / (float)M_PI);
+
+            for (int w = 0; w < 4; ++w) {
+                float slip = fabsf(read_f32_le(raw, 0x54 + w * 4));
+                state->tire_slip_ratio[w] = (slip > 1.0f) ? 1.0f : slip;
+                state->wheel_angular_speed[w] = read_f32_le(raw, 0x64 + w * 4);
+                state->susp_height[w] = 40.0f + read_f32_le(raw, 0x84 + w * 4) * 50.0f;
+            }
+
+            if (len >= 311) {
+                size_t dash_off = (len == 324) ? 244 : 232;
+                state->pos_x = read_f32_le(raw, dash_off + 0x00);
+                state->pos_y = read_f32_le(raw, dash_off + 0x04);
+                state->pos_z = read_f32_le(raw, dash_off + 0x08);
+                state->speed_ms  = fabsf(read_f32_le(raw, dash_off + 0x0C));
+                state->speed_kmh = state->speed_ms * 3.6f;
+                state->speed_mph = state->speed_ms * 2.236936f;
+                state->energy_recovery_kw = read_f32_le(raw, dash_off + 0x10) / 1000.0f;
+                for (int w = 0; w < 4; ++w) {
+                    float tf = read_f32_le(raw, dash_off + 0x18 + w * 4);
+                    /* Forza tire temps are in Fahrenheit; convert to Celsius if > 125 */
+                    state->tire_temp[w] = (tf > 125.0f) ? ((tf - 32.0f) * 5.0f / 9.0f) : tf;
+                }
+                state->turbo_bar = read_f32_le(raw, dash_off + 0x28) * 0.0689476f;
+                state->fuel_pct  = read_f32_le(raw, dash_off + 0x2C) * 100.0f;
+                state->fuel_capacity = 100.0f;
+                state->fuel_level = state->fuel_pct;
+                state->best_lap_ms = (int32_t)(read_f32_le(raw, dash_off + 0x34) * 1000.0f);
+                state->last_lap_ms = (int32_t)(read_f32_le(raw, dash_off + 0x38) * 1000.0f);
+                state->current_lap_ms = (int32_t)(read_f32_le(raw, dash_off + 0x3C) * 1000.0f);
+                state->current_lap_time_ms = state->current_lap_ms;
+                state->current_lap = (int16_t)read_u16_le(raw, dash_off + 0x44);
+                state->race_position = raw[dash_off + 0x46];
+                state->throttle_pct = ((float)raw[dash_off + 0x47] / 255.0f) * 100.0f;
+                state->brake_pct    = ((float)raw[dash_off + 0x48] / 255.0f) * 100.0f;
+                state->clutch_pct   = ((float)raw[dash_off + 0x49] / 255.0f) * 100.0f;
+                uint8_t fg = raw[dash_off + 0x4B];
+                state->current_gear = (fg == 0) ? 0 : ((fg == 1) ? -1 : (int)(fg - 1));
+                state->steer_angle_fl_deg = ((float)((int8_t)raw[dash_off + 0x4C]) / 127.0f) * 32.0f;
+                state->steer_angle_fr_deg = state->steer_angle_fl_deg;
+            } else {
+                state->speed_ms = sqrtf(state->vel_x * state->vel_x + state->vel_z * state->vel_z);
+                state->speed_kmh = state->speed_ms * 3.6f;
+                state->speed_mph = state->speed_ms * 2.236936f;
+            }
+
+            state->rx_packet_len = len;
+            strncpy(state->simhub_format, "SIMHUB FZA", sizeof(state->simhub_format) - 1);
+            simhub_post_process(client, state, now_ms);
+            return true;
+        }
+    }
+
+    /* 3. Check for SimHub / Codemasters Mode 1 Binary Telemetry Packet (264 bytes) */
+    if (len == 264) {
+        float spd_ms = read_f32_le(raw, 0x1C);
+        float thr    = read_f32_le(raw, 0x74);
+        float brk    = read_f32_le(raw, 0x7C);
+        float eng_r  = read_f32_le(raw, 0x94);
+        if (isfinite(spd_ms) && isfinite(thr) && isfinite(brk) && isfinite(eng_r) &&
+            spd_ms >= -50.0f && spd_ms <= 200.0f && thr >= -0.05f && thr <= 1.05f &&
+            brk >= -0.05f && brk <= 1.05f && eng_r >= 0.0f && eng_r <= 3000.0f) {
+            state->current_lap_ms = (int32_t)(read_f32_le(raw, 0x04) * 1000.0f);
+            state->current_lap_time_ms = state->current_lap_ms;
+            state->pos_x = read_f32_le(raw, 0x10);
+            state->pos_y = read_f32_le(raw, 0x14);
+            state->pos_z = read_f32_le(raw, 0x18);
+            state->speed_ms  = fabsf(spd_ms);
+            state->speed_kmh = state->speed_ms * 3.6f;
+            state->speed_mph = state->speed_ms * 2.236936f;
+            state->vel_x = read_f32_le(raw, 0x20);
+            state->vel_y = read_f32_le(raw, 0x24);
+            state->vel_z = read_f32_le(raw, 0x28);
+
+            /* Codemasters wheel order is RL, RR, FL, FR -> map to FL(0), FR(1), RL(2), RR(3) */
+            state->susp_height[2] = read_f32_le(raw, 0x44);
+            state->susp_height[3] = read_f32_le(raw, 0x48);
+            state->susp_height[0] = read_f32_le(raw, 0x4C);
+            state->susp_height[1] = read_f32_le(raw, 0x50);
+
+            float wspd[4];
+            wspd[2] = read_f32_le(raw, 0x64);
+            wspd[3] = read_f32_le(raw, 0x68);
+            wspd[0] = read_f32_le(raw, 0x6C);
+            wspd[1] = read_f32_le(raw, 0x70);
+            for (int w = 0; w < 4; ++w) {
+                state->wheel_angular_speed[w] = wspd[w] / 0.33f;
+                if (state->speed_ms > 2.0f) {
+                    float s = fabsf(wspd[w] - state->speed_ms) / state->speed_ms;
+                    state->tire_slip_ratio[w] = (s > 1.0f) ? 1.0f : s;
+                } else {
+                    state->tire_slip_ratio[w] = 0.0f;
+                }
+            }
+
+            state->throttle_pct = (thr < 0.0f ? 0.0f : (thr > 1.0f ? 1.0f : thr)) * 100.0f;
+            state->steer_angle_fl_deg = read_f32_le(raw, 0x78) * 32.0f;
+            state->steer_angle_fr_deg = state->steer_angle_fl_deg;
+            state->brake_pct    = (brk < 0.0f ? 0.0f : (brk > 1.0f ? 1.0f : brk)) * 100.0f;
+            state->clutch_pct   = read_f32_le(raw, 0x80) * 100.0f;
+
+            int cm_gear = (int)roundf(read_f32_le(raw, 0x84));
+            state->current_gear = (cm_gear == 10 || cm_gear < 0) ? 0 : (cm_gear == 0 ? -1 : cm_gear);
+            state->g_lat = read_f32_le(raw, 0x88);
+            state->g_lon = read_f32_le(raw, 0x8C);
+            state->native_sway  = state->g_lat;
+            state->native_surge = state->g_lon;
+            state->current_lap  = (int16_t)(read_f32_le(raw, 0x90) + 1.0f);
+            state->engine_rpm   = eng_r * 10.0f;
+            float cm_max_rpm    = read_f32_le(raw, 0xC4) * 10.0f;
+            state->rpm_limiter  = (cm_max_rpm > 1000.0f) ? (uint16_t)cm_max_rpm : 8500;
+            state->rpm_warning  = (uint16_t)(state->rpm_limiter * 0.88f);
+            state->last_lap_ms  = (int32_t)(read_f32_le(raw, 0xC0) * 1000.0f);
+
+            state->tire_temp[2] = read_f32_le(raw, 0xD4);
+            state->tire_temp[3] = read_f32_le(raw, 0xD8);
+            state->tire_temp[0] = read_f32_le(raw, 0xDC);
+            state->tire_temp[1] = read_f32_le(raw, 0xE0);
+
+            float f_in_tank = read_f32_le(raw, 0xF4);
+            float f_cap     = read_f32_le(raw, 0xF8);
+            if (f_cap > 0.1f) {
+                state->fuel_level = f_in_tank;
+                state->fuel_capacity = f_cap;
+                state->fuel_pct = (f_in_tank / f_cap) * 100.0f;
+            }
+
+            state->rx_packet_len = len;
+            strncpy(state->simhub_format, "SIMHUB CM1", sizeof(state->simhub_format) - 1);
+            simhub_post_process(client, state, now_ms);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void poll_udp_socket(int fd, gt7_client_t *client, gt7_state_t *state, uint32_t now_ms) {
+    if (fd < 0) return;
+
+    uint8_t raw_buf[2048];
+    uint8_t dec_buf[512];
+    struct sockaddr_in sender;
+    socklen_t sender_len = sizeof(sender);
+
+    while (1) {
+        sender_len = sizeof(sender);
+        ssize_t n = recvfrom(fd, raw_buf, sizeof(raw_buf) - 1, 0,
+                             (struct sockaddr *)&sender, &sender_len);
+        if (n <= 0) {
+            break;
+        }
+
+        bool accepted = false;
+        /* 1. Try PS5 GT7 Packet (Encrypted or Raw G7S0) if <= 512 bytes */
+        if ((size_t)n <= sizeof(dec_buf) && gt7_decrypt_packet(raw_buf, (size_t)n, dec_buf)) {
+            state->is_simhub = false;
+            state->simhub_format[0] = '\0';
+            gt7_parse_decrypted(client, state, dec_buf, (size_t)n, now_ms);
+            accepted = true;
+        }
+        /* 2. Otherwise try PC SimHub Packet (JSON / Key-Value / Forza Data Out / Codemasters Mode 1) */
+        else if (simhub_parse_packet(client, state, raw_buf, (size_t)n, now_ms)) {
+            accepted = true;
+        }
+
+        if (accepted) {
+            state->connected = true;
+            state->demo_mode = false;
+            state->last_rx_ms = now_ms;
+            char detected_ip[INET_ADDRSTRLEN];
+            if (inet_ntop(AF_INET, &sender.sin_addr, detected_ip, sizeof(detected_ip))) {
+                strncpy(client->ps5_ip, detected_ip, sizeof(client->ps5_ip) - 1);
+                client->ps5_ip[sizeof(client->ps5_ip) - 1] = '\0';
+            }
+        }
+    }
+}
+
 void gt7_update(gt7_client_t *client, gt7_state_t *state, uint32_t now_ms) {
     uint32_t hb_interval = (client->auto_detect && !state->connected) ? 250 : 1000;
     if (now_ms - client->last_heartbeat_ms >= hb_interval) {
@@ -742,31 +1340,9 @@ void gt7_update(gt7_client_t *client, gt7_state_t *state, uint32_t now_ms) {
         client->last_heartbeat_ms = now_ms;
     }
 
-    uint8_t raw_buf[512];
-    uint8_t dec_buf[512];
-    struct sockaddr_in sender;
-    socklen_t sender_len = sizeof(sender);
-
-    while (client->sock_fd >= 0) {
-        ssize_t n = recvfrom(client->sock_fd, raw_buf, sizeof(raw_buf), 0,
-                             (struct sockaddr *)&sender, &sender_len);
-        if (n <= 0) {
-            break;
-        }
-
-        if (gt7_decrypt_packet(raw_buf, (size_t)n, dec_buf)) {
-            state->connected = true;
-            state->demo_mode = false;
-            state->last_rx_ms = now_ms;
-            char detected_ip[INET_ADDRSTRLEN];
-            if (inet_ntop(AF_INET, &sender.sin_addr, detected_ip, sizeof(detected_ip))) {
-                /* Lock onto discovered PS5 IP while preserving auto_detect flag */
-                strncpy(client->ps5_ip, detected_ip, sizeof(client->ps5_ip) - 1);
-                client->ps5_ip[sizeof(client->ps5_ip) - 1] = '\0';
-            }
-            gt7_parse_decrypted(client, state, dec_buf, (size_t)n, now_ms);
-        }
-    }
+    /* Poll both primary UDP port 33740 (GT7 + SimHub) and secondary UDP port 20777 (SimHub default) */
+    poll_udp_socket(client->sock_fd, client, state, now_ms);
+    poll_udp_socket(client->simhub_sock_fd, client, state, now_ms);
 
     if (state->connected && (now_ms - state->last_rx_ms > 2500)) {
         state->connected = false;
@@ -1068,5 +1644,9 @@ void gt7_close(gt7_client_t *client) {
     if (client->sock_fd >= 0) {
         close(client->sock_fd);
         client->sock_fd = -1;
+    }
+    if (client->simhub_sock_fd >= 0) {
+        close(client->simhub_sock_fd);
+        client->simhub_sock_fd = -1;
     }
 }

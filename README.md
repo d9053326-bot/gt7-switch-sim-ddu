@@ -1,5 +1,5 @@
-# GT7 Switch Sim-DDU Pro (Nintendo Switch Sim Racing & EV Cockpit DDU)
-**Version / 版本號: `_aw_1.10.30.1350` (True OLED Black & Full Telemetry Edition)**
+# GT7 & PC SimHub Switch Sim-DDU Pro (Nintendo Switch Sim Racing & EV Cockpit DDU)
+**Version / 版本號: `_aw_1.11.05.2225` (PS5 GT7 + PC SimHub Dual-Engine & True OLED Black Edition)**
 
 <p align="center">
   <b>🌐 Language Navigation / 語言切換 / 言語切替 / Sprachauswahl:</b><br><br>
@@ -90,7 +90,13 @@
 ### 100% 零搖桿全觸控與 True OLED `#000000` 極致純黑校準
 - **True OLED Pitch Black (`#000000`)**：所有模式背景、儀表卡片、地圖畫布與軌跡圖全面採用絕對純黑 `rgba(0,0,0,255)`，讓 Switch OLED 黑色像素完全關閉不發光，呈現無限對比度與零光暈視覺體驗。
 - **一鍵全螢幕 (`FULL`)**：導覽列自動收起，畫面 100% 滿版無黑邊；輕觸左下角即刻跳出全螢幕。
-- **自動偵測 PS5 (`IP: AUTO`)**：開機自動發送 UDP 廣播搜尋 PS5，無需手動輸入 IP；亦可點擊 IP 按鈕手動輸入。
+- **自動偵測 PS5 GT7 與 PC SimHub 雙遙測引擎 (`IP: AUTO`)**：
+  - **PS5 / PS5 Pro《Gran Turismo 7》**：開機自動透過 UDP Port `33739` / `33740` 發送心跳封包並解密 `Packet C (368B)` / `Packet ~ (344B)` / `Packet B (316B)` / `Packet A (296B)`。
+  - **PC SimHub 跨平台賽車遊戲支援 (Assetto Corsa / ACC / iRacing / F1 / Forza / rFactor 2 / Dirt Rally 2.0 / EA WRC)**：同時監聽 UDP Port **`20777`** 與 **`33740`**，自動辨識並解析 4 種 PC SimHub 遙測格式：
+    1. **SimHub Custom UDP JSON / Key-Value 字串**（可執行 `python3 tools/simhub_bridge.py --template` 取得設定模板）
+    2. **SimHub / Forza "Data Out" 二進位封包** (`232` / `311` / `324` / `331` Bytes)
+    3. **SimHub / Codemasters Mode 1 二進位封包** (`264` Bytes)
+    4. **SimHub Web API 轉發橋接器**：直接執行 `python3 tools/simhub_bridge.py --switch-ip <Switch_IP> --port 20777` 即可將 PC SimHub 60Hz 遙測即時推送至 Switch！
 - 👉 **[點此閱讀繁體中文完整說明文件](README_ZH.md)**
 
 ---

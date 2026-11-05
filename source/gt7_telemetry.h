@@ -9,11 +9,12 @@
 extern "C" {
 #endif
 
-#define GT7_SEND_PORT 33739
-#define GT7_RECV_PORT 33740
-#define GT7_MAGIC_G7S0 0x47375330U
+#define GT7_SEND_PORT    33739
+#define GT7_RECV_PORT    33740
+#define SIMHUB_RECV_PORT 20777
+#define GT7_MAGIC_G7S0   0x47375330U
 
-#define GT7_APP_VERSION "_aw_1.10.30.1350"
+#define GT7_APP_VERSION "_aw_1.11.05.2225"
 
 #define GT7_TRACE_LEN 160
 #define GT7_TRACK_PTS 500
@@ -26,14 +27,15 @@ typedef enum {
     GT7_CIRCUIT_COUNT       = 3
 } gt7_circuit_preset_t;
 
-/* Heartbeat Negotiation & Telemetry Protocol Modes */
+/* Heartbeat Negotiation & Telemetry Protocol / Source Modes */
 typedef enum {
-    GT7_HEARTBEAT_AUTO      = 0, /* Smart Adaptive: '~' for EV Cockpit, 'C' for Motorsport, fallback to 'A' */
-    GT7_HEARTBEAT_PKT_C     = 1, /* Force Packet C (368 Bytes, Heartbeat 'C') - Surface type, Category, Lap MS */
-    GT7_HEARTBEAT_PKT_TILDE = 2, /* Force Packet ~ (344 Bytes, Heartbeat '~') - EV Torque Vectors & Regen kW */
-    GT7_HEARTBEAT_PKT_A     = 3, /* Force Packet A (296 Bytes, Heartbeat 'A') - Baseline GT7 Telemetry */
-    GT7_HEARTBEAT_PKT_B     = 4, /* Force Packet B (316 Bytes, Heartbeat 'B') - 6-DoF Inertial Acceleration */
-    GT7_HEARTBEAT_COUNT     = 5
+    GT7_HEARTBEAT_AUTO      = 0, /* Smart Adaptive: PS5 GT7 ('~'/'C'/'A') + PC SimHub Auto-Listen (:20777/:33740) */
+    GT7_HEARTBEAT_PKT_C     = 1, /* Force PS5 Packet C (368 Bytes, Heartbeat 'C') - Surface type, Category, Lap MS */
+    GT7_HEARTBEAT_PKT_TILDE = 2, /* Force PS5 Packet ~ (344 Bytes, Heartbeat '~') - EV Torque Vectors & Regen kW */
+    GT7_HEARTBEAT_SIMHUB    = 3, /* Dedicated PC SimHub Receiver Mode (JSON / Forza / Codemasters UDP :20777/:33740) */
+    GT7_HEARTBEAT_PKT_A     = 4, /* Force PS5 Packet A (296 Bytes, Heartbeat 'A') - Baseline GT7 Telemetry */
+    GT7_HEARTBEAT_PKT_B     = 5, /* Force PS5 Packet B (316 Bytes, Heartbeat 'B') - 6-DoF Inertial Acceleration */
+    GT7_HEARTBEAT_COUNT     = 6
 } gt7_heartbeat_mode_t;
 
 /* Simulator Interface Flags (Offset 0x8E) */
@@ -166,12 +168,14 @@ typedef struct {
     char circuit_name[48];
     float track_length_km;
 
-    /* Extended GT7 Telemetry Channels (Packet B, Packet ~, Packet C) */
-    size_t rx_packet_len;    /* Actual decrypted packet length (296, 316, 344, 368) */
-    char rx_packet_type;     /* 'A', 'B', '~', 'C' */
+    /* Extended GT7 & PC SimHub Telemetry Channels (Packet B, Packet ~, Packet C, SimHub) */
+    size_t rx_packet_len;    /* Actual decrypted packet length (296, 316, 344, 368, or SimHub payload size) */
+    char rx_packet_type;     /* 'A', 'B', '~', 'C', or 'S' (SimHub) */
     bool has_packet_b;       /* True if packet >= 316 bytes */
     bool has_packet_tilde;   /* True if packet == 344 bytes */
     bool has_packet_c;       /* True if packet == 368 bytes */
+    bool is_simhub;          /* True if receiving telemetry from PC SimHub */
+    char simhub_format[16];  /* "SIMHUB JSON", "SIMHUB FZA", "SIMHUB CM1", "SIMHUB GT7" */
 
     /* Packet B (0x128..0x13B) - Native 6-DoF Inertial Acceleration & Rates */
     float native_sway;       /* Live lateral acceleration (0x130) */
@@ -211,8 +215,9 @@ typedef struct {
 
 typedef struct {
     int sock_fd;
-    bool auto_detect;        /* True = Auto-detect PS5 via subnet scan + broadcast (default) */
-    char ps5_ip[64];         /* Locked or manual PS5 IP */
+    int simhub_sock_fd;      /* Secondary non-blocking UDP socket bound to port 20777 (SimHub default) */
+    bool auto_detect;        /* True = Auto-detect PS5 / PC SimHub via subnet scan + broadcast (default) */
+    char ps5_ip[64];         /* Locked or manual PS5 / PC SimHub IP */
     char local_ip[64];       /* Detected local Wi-Fi IP of Switch/Host */
     char subnet_prefix[48];  /* e.g. "192.168.1" */
     uint8_t scan_cursor;     /* Current host octet being swept during auto-discovery */
@@ -244,6 +249,7 @@ void gt7_cycle_demo_circuit(gt7_state_t *state);
 void gt7_update(gt7_client_t *client, gt7_state_t *state, uint32_t now_ms);
 void gt7_update_demo(gt7_state_t *state, uint32_t now_ms, int theme_index);
 bool gt7_decrypt_packet(const uint8_t *raw, size_t len, uint8_t *decrypted_out);
+bool simhub_parse_packet(gt7_client_t *client, gt7_state_t *state, const uint8_t *raw, size_t len, uint32_t now_ms);
 void gt7_close(gt7_client_t *client);
 
 #ifdef __cplusplus

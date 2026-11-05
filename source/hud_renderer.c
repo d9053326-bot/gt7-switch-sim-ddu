@@ -4645,10 +4645,10 @@ static void render_ip_modal(SDL_Renderer *r, const gt7_client_t *client, hud_ui_
     int my = (SCREEN_H - mh) / 2;
 
     draw_panel(r, mx, my, mw, mh, rgba(0, 0, 0, 255), rgba(0, 225, 255, 255), 16);
-    draw_text_centered(r, "PS5 / PS5 PRO IP & TELEMETRY SETUP", SCREEN_W / 2, my + 18, 2, rgba(0, 225, 255, 255));
+    draw_text_centered(r, "PS5 GT7 & PC SIMHUB TELEMETRY SETUP", SCREEN_W / 2, my + 18, 2, rgba(0, 225, 255, 255));
 
     char sub_info[256];
-    snprintf(sub_info, sizeof(sub_info), "LOCAL IP: %s    AUTO-SCAN: %s.1-254", client->local_ip, client->subnet_prefix);
+    snprintf(sub_info, sizeof(sub_info), "SWITCH IP: %s  |  PS5: 33740  |  SIMHUB: 20777 / 33740", client->local_ip);
     draw_text_centered(r, sub_info, SCREEN_W / 2, my + 46, 2, rgba(160, 185, 215, 255));
 
     fill_rect(r, mx + 40, my + 72, mw - 80, 50, rgba(0, 0, 0, 255));
@@ -4670,11 +4670,11 @@ static void render_ip_modal(SDL_Renderer *r, const gt7_client_t *client, hud_ui_
         draw_text_centered(r, keys[i], bx + kw / 2, by + 14, 3, rgba(245, 250, 255, 255));
     }
 
-    /* Dedicated Heartbeat Protocol Row */
+    /* Dedicated Telemetry Source & Protocol Row */
     int proto_y = gy + 4 * (kh + gap) + 8;
-    draw_text_centered(r, "GT7 TELEMETRY PROTOCOL HEARTBEAT:", SCREEN_W / 2, proto_y, 1, rgba(160, 185, 215, 255));
+    draw_text_centered(r, "TELEMETRY SOURCE / PROTOCOL (PS5 GT7 OR PC SIMHUB):", SCREEN_W / 2, proto_y, 1, rgba(160, 185, 215, 255));
 
-    static const char *proto_labels[4] = {"AUTO (SMART)", "PKT C (368B)", "PKT ~ (344B)", "PKT A (296B)"};
+    static const char *proto_labels[4] = {"AUTO (PS5+PC)", "PKT C (368B)", "PKT ~ (344B)", "PC SIMHUB"};
     int pw = 124, ph = 36, pgap = 10;
     int px_start = mx + (mw - (pw * 4 + pgap * 3)) / 2;
     int proto_btn_y = proto_y + 16;
@@ -4732,9 +4732,13 @@ void hud_render(SDL_Renderer *r, const gt7_state_t *state, const gt7_client_t *c
         draw_text(r, "GT7 DDU", 16, 12, 2, rgba(240, 245, 255, 255));
         draw_text(r, GT7_APP_VERSION, 106, 15, 1, rgba(140, 160, 190, 255));
 
-        /* Telemetry Protocol Lock Badge: PKT C (368B) / PKT ~ (344B) / PKT A (296B) */
+        /* Telemetry Protocol Lock Badge: SIMHUB JSON / SIMHUB FZA / SIMHUB CM1 / PKT C (368B) / PKT ~ (344B) / PKT A (296B) */
         char pkt_badge[32];
-        if (state->has_packet_c) {
+        if (state->connected && state->is_simhub && state->simhub_format[0] != '\0') {
+            snprintf(pkt_badge, sizeof(pkt_badge), "%s", state->simhub_format);
+        } else if (client->heartbeat_mode == GT7_HEARTBEAT_SIMHUB && !state->connected) {
+            snprintf(pkt_badge, sizeof(pkt_badge), "PC SIMHUB");
+        } else if (state->has_packet_c) {
             snprintf(pkt_badge, sizeof(pkt_badge), "PKT C (368B)");
         } else if (state->has_packet_tilde) {
             snprintf(pkt_badge, sizeof(pkt_badge), "PKT ~ (344B)");
@@ -4749,15 +4753,22 @@ void hud_render(SDL_Renderer *r, const gt7_state_t *state, const gt7_client_t *c
 
         char status_str[128];
         rgba_t status_col;
-        if (state->connected) {
+        if (state->connected && state->is_simhub) {
+            snprintf(status_str, sizeof(status_str), "LIVE SIMHUB (%s) 60HZ", client->ps5_ip);
+            status_col = rgba(0, 245, 165, 255);
+        } else if (state->connected) {
             snprintf(status_str, sizeof(status_str), "LIVE PS5 (%s) 60HZ", client->ps5_ip);
             status_col = rgba(0, 240, 110, 255);
+        } else if (client->heartbeat_mode == GT7_HEARTBEAT_SIMHUB) {
+            snprintf(status_str, sizeof(status_str), "SIMHUB WAIT (:20777/:33740) %s",
+                     state->demo_mode ? "| DEMO" : "");
+            status_col = rgba(0, 235, 190, 255);
         } else if (client->auto_detect) {
-            snprintf(status_str, sizeof(status_str), "AUTO PS5 (%s.*) %s",
+            snprintf(status_str, sizeof(status_str), "AUTO PS5/PC (%s.*) %s",
                      client->subnet_prefix, state->demo_mode ? "| DEMO" : "");
             status_col = rgba(0, 220, 255, 255);
         } else {
-            snprintf(status_str, sizeof(status_str), "MANUAL PS5 (%s) %s",
+            snprintf(status_str, sizeof(status_str), "MANUAL (%s) %s",
                      client->ps5_ip, state->demo_mode ? "| DEMO" : "");
             status_col = rgba(255, 195, 0, 255);
         }

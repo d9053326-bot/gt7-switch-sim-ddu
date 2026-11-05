@@ -1,9 +1,9 @@
-# GT7 Switch Sim-DDU Pro (繁體中文)
-**版本號: `_aw_1.10.30.1350` (True OLED Black & Full Telemetry Edition)**
+# GT7 & PC SimHub Switch Sim-DDU Pro (繁體中文)
+**版本號: `_aw_1.11.05.2225` (PS5 GT7 + PC SimHub 雙遙測引擎 & True OLED Black 旗艦版)**
 
 [English](README_EN.md) | [日本語](README_JA.md) | [Deutsch](README_DE.md)
 
-專為 **Nintendo Switch (V1 / V2 / Switch OLED 大氣層 Atmosphère 破解系統)** 打造的原生 Homebrew 賽車儀表板 App (`.nro`)。透過 Wi-Fi 接收 **PS5 / PS5 Pro《Gran Turismo 7 (跑車浪漫旅 7)》** 60Hz UDP 遙測封包，將 Switch 拆下左右 Joy-Con 搖桿後，直接架設於賽車方向盤基座前方，化身為高精準度、低延遲的頂級 **Sim Racing DDU (Dashboard Display Unit)**。
+專為 **Nintendo Switch (V1 / V2 / Switch OLED 大氣層 Atmosphère 破解系統)** 打造的原生 Homebrew 賽車儀表板 App (`.nro`)。透過 Wi-Fi 同時支援接收 **PS5 / PS5 Pro《Gran Turismo 7 (跑車浪漫旅 7)》** 與 **PC SimHub（Assetto Corsa、ACC、iRacing、F1、Forza、rFactor 2、EA WRC 等全平台賽車遊戲）** 60Hz UDP 遙測封包，將 Switch 拆下左右 Joy-Con 搖桿後，直接架設於賽車方向盤基座前方，化身為高精準度、低延遲的頂級 **Sim Racing DDU (Dashboard Display Unit)**。
 
 ---
 
@@ -96,4 +96,12 @@
    *(或直接放在 `/switch/gt7_switch_hud.nro`)*
 3. 將記憶卡插回 Switch 並啟動大氣層系統。
 4. 進入 Homebrew 相簿選單，點擊 **GT7 Sim-DDU** 圖標即可啟動！
-5. 確保 Switch 與 PS5 連線至同一個 Wi-Fi 區域網路，進入 GT7 賽道後即可即時接收 60Hz 遙測！
+5. **PS5《Gran Turismo 7》連線**：確保 Switch 與 PS5 連線至同一個 Wi-Fi 區域網路，進入 GT7 賽道後即可自動偵測並接收 60Hz 遙測！
+6. **PC SimHub 連線（支援三種方式任選其一，免改設定自動識別）**：
+   - **方式 A（SimHub 內建 UDP 轉發）**：在 PC SimHub 進入 `Settings` -> `Plugins` -> `UDP Forwarding`（或在遊戲遙測轉發中），將目標 IP 設為 Switch 的 IP（可點擊 Switch 畫面下方 `IP: AUTO` 查看 `SWITCH IP`），目標 Port 設為 **`20777`**（或 `33740`），格式選擇 **Codemasters (Mode 1, 264B)** 或 **Forza Data Out (311B/324B)**。
+   - **方式 B（Python 零依賴橋接腳本）**：在 PC 上直接執行內附工具：
+     ```bash
+     # 自動從 PC SimHub 讀取即時遙測並以 60Hz 推送至 Switch
+     python3 tools/simhub_bridge.py --switch-ip <Switch的IP> --port 20777
+     ```
+   - **方式 C（SimHub Custom UDP JSON）**：執行 `python3 tools/simhub_bridge.py --template` 複製 JSON 模板貼入 SimHub Custom UDP 輸出至 `<Switch的IP>:20777`。

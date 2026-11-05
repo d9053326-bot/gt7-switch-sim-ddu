@@ -77,7 +77,7 @@ int main(int argc, char *argv[]) {
     }
 
     SDL_Window *window = SDL_CreateWindow(
-        "GT7 Switch Telemetry HUD (PS5 / PS5 Pro)",
+        "GT7 & PC SimHub Switch Telemetry HUD (PS5 / PC SimHub)",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         SCREEN_W, SCREEN_H,
         SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI
@@ -188,6 +188,11 @@ int main(int argc, char *argv[]) {
                     case SDLK_d:
                     case SDLK_y:
                         state.demo_mode = !state.demo_mode;
+                        break;
+                    case SDLK_s:
+                        client.heartbeat_mode = (client.heartbeat_mode == GT7_HEARTBEAT_SIMHUB)
+                                                ? GT7_HEARTBEAT_AUTO
+                                                : GT7_HEARTBEAT_SIMHUB;
                         break;
                     case SDLK_u:
                     case SDLK_a:

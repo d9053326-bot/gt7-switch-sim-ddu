@@ -1,5 +1,5 @@
 # GT7 & PC SimHub Switch Sim-DDU Pro (日本語)
-**バージョン: `_aw_1.11.05.2225` (PS5 GT7 + PC SimHub デュアルエンジン & True OLED Black 版)**
+**バージョン: `_aw_1.11.05.2245` (PS5 GT7 + PC SimHub デュアルエンジン & True OLED Black 版)**
 
 [繁體中文](README_ZH.md) | [English](README_EN.md) | [Deutsch](README_DE.md)
 

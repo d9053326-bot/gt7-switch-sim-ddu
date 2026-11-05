@@ -185,13 +185,35 @@ def pack_codemasters_264(d: dict) -> bytes:
     return bytes(buf)
 
 
+def pack_outgauge_96(d: dict) -> bytes:
+    buf = bytearray(96)
+    struct.pack_into("<I", buf, 0x00, int(time.time() * 1000) & 0xFFFFFFFF)
+    buf[0x04:0x08] = b"GT3\x00"
+    struct.pack_into("<H", buf, 0x08, (1 << 13) | (1 << 14) | (1 << 15))
+    buf[0x0A] = int(d["gear"]) + 1
+    buf[0x0B] = 1
+    struct.pack_into("<f", buf, 0x0C, float(d["speed_kmh"]) / 3.6)
+    struct.pack_into("<f", buf, 0x10, float(d["rpm"]))
+    struct.pack_into("<f", buf, 0x14, float(d["boost"]))
+    struct.pack_into("<f", buf, 0x18, float(d["water_temp"]))
+    struct.pack_into("<f", buf, 0x1C, float(d["fuel"]) / 100.0)
+    struct.pack_into("<f", buf, 0x20, float(d["oil_press"]))
+    struct.pack_into("<f", buf, 0x24, float(d["oil_temp"]))
+    struct.pack_into("<I", buf, 0x28, 0xFFFFFFFF)
+    struct.pack_into("<I", buf, 0x2C, (1 << 4) if float(d["throttle"]) > 85.0 else 0)
+    struct.pack_into("<f", buf, 0x30, float(d["throttle"]) / 100.0)
+    struct.pack_into("<f", buf, 0x34, float(d["brake"]) / 100.0)
+    struct.pack_into("<f", buf, 0x38, float(d["clutch"]) / 100.0)
+    return bytes(buf)
+
+
 def main():
     parser = argparse.ArgumentParser(description="PC SimHub -> Switch Telemetry UDP Bridge & Simulator")
     parser.add_argument("--template", action="store_true", help="Print SimHub Custom UDP JSON template and exit")
     parser.add_argument("--simulate", action="store_true", help="Send 60Hz simulated telemetry packets")
     parser.add_argument("--switch-ip", default="127.0.0.1", help="Target Nintendo Switch or Host IP address")
     parser.add_argument("--port", type=int, default=20777, help="Target UDP port (20777 or 33740)")
-    parser.add_argument("--format", choices=["json", "forza", "codemasters"], default="json", help="UDP packet format")
+    parser.add_argument("--format", choices=["json", "forza", "codemasters", "outgauge"], default="json", help="UDP packet format")
     parser.add_argument("--duration", type=float, default=0.0, help="Stop after N seconds (0 = infinite)")
     parser.add_argument("--simhub-http", default="http://127.0.0.1:8888/api/getgamedata", help="SimHub HTTP API URL")
     args = parser.parse_args()
@@ -262,6 +284,8 @@ def main():
                 payload = json.dumps(frame).encode("utf-8")
             elif args.format == "forza":
                 payload = pack_forza_311(frame)
+            elif args.format == "outgauge":
+                payload = pack_outgauge_96(frame)
             else:
                 payload = pack_codemasters_264(frame)
 

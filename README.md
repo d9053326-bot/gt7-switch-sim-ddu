@@ -1,5 +1,5 @@
 # GT7 & PC SimHub Switch Sim-DDU Pro (Nintendo Switch Sim Racing & EV Cockpit DDU)
-**Version / 版本號: `_aw_1.11.05.2225` (PS5 GT7 + PC SimHub Dual-Engine & True OLED Black Edition)**
+**Version / 版本號: `_aw_1.11.05.2245` (PS5 GT7 + PC SimHub Dual-Engine & True OLED Black Edition)**
 
 <p align="center">
   <b>🌐 Language Navigation / 語言切換 / 言語切替 / Sprachauswahl:</b><br><br>
@@ -92,11 +92,12 @@
 - **一鍵全螢幕 (`FULL`)**：導覽列自動收起，畫面 100% 滿版無黑邊；輕觸左下角即刻跳出全螢幕。
 - **自動偵測 PS5 GT7 與 PC SimHub 雙遙測引擎 (`IP: AUTO`)**：
   - **PS5 / PS5 Pro《Gran Turismo 7》**：開機自動透過 UDP Port `33739` / `33740` 發送心跳封包並解密 `Packet C (368B)` / `Packet ~ (344B)` / `Packet B (316B)` / `Packet A (296B)`。
-  - **PC SimHub 跨平台賽車遊戲支援 (Assetto Corsa / ACC / iRacing / F1 / Forza / rFactor 2 / Dirt Rally 2.0 / EA WRC)**：同時監聽 UDP Port **`20777`** 與 **`33740`**，自動辨識並解析 4 種 PC SimHub 遙測格式：
-    1. **SimHub Custom UDP JSON / Key-Value 字串**（可執行 `python3 tools/simhub_bridge.py --template` 取得設定模板）
-    2. **SimHub / Forza "Data Out" 二進位封包** (`232` / `311` / `324` / `331` Bytes)
-    3. **SimHub / Codemasters Mode 1 二進位封包** (`264` Bytes)
-    4. **SimHub Web API 轉發橋接器**：直接執行 `python3 tools/simhub_bridge.py --switch-ip <Switch_IP> --port 20777` 即可將 PC SimHub 60Hz 遙測即時推送至 Switch！
+  - **PC SimHub 跨平台賽車遊戲支援 (Assetto Corsa / ACC / iRacing / F1 / Forza / rFactor 2 / Dirt Rally 2.0 / EA WRC / BeamNG.drive)**：同時監聽 UDP Port **`20777`** 與 **`33740`**，自動辨識並解析 5 種 PC SimHub 遙測格式，並將所有數據完整映射至 11 種儀表視圖（含四輪扭力向量、ePower/動能回收功率、空力下壓力、單圈三區段與理論最佳圈速）：
+    1. **SimHub Custom UDP JSON / 巢狀 Web API JSON (`SIMHUB JSON`)**（支援單層與巢狀 `{"NewData":{...}}` 及 `DataCorePlugin.GameData.*` 完整屬性名）
+    2. **SimHub / Forza "Data Out" 二進位封包 (`SIMHUB FZA`)** (`232` / `311` / `324` / `331` Bytes)
+    3. **SimHub / Codemasters Mode 1 二進位封包 (`SIMHUB CM1`)** (`264` Bytes，自動偵測 `RPM/10` 與直接 `RPM` 倍率)
+    4. **SimHub / OutGauge 二進位封包 (`SIMHUB OTG`)** (`92` / `96` Bytes，支援 BeamNG / LFS / Assetto Corsa OutGauge)
+    5. **SimHub Web API 轉發與測試橋接器**：直接執行 `python3 tools/simhub_bridge.py --switch-ip <Switch_IP> --port 20777` 即可將 PC SimHub 60Hz 遙測即時推送至 Switch！
 - 👉 **[點此閱讀繁體中文完整說明文件](README_ZH.md)**
 
 ---

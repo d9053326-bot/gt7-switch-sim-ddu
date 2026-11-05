@@ -170,6 +170,12 @@ int main(int argc, char *argv[]) {
                             ui.theme_banner_until_ms = now_ms + 1800;
                         }
                         break;
+                    case SDLK_b:
+                    case SDLK_v:
+                        if (ui.theme == HUD_THEME_EV_COCKPIT && ui.ev_style == EV_STYLE_BMW_I) {
+                            hud_cycle_bmw_view(&ui, +1, now_ms);
+                        }
+                        break;
                     case SDLK_LEFT:
                     case SDLK_l:
                         hud_cycle_theme(&ui, -1, now_ms);
@@ -219,6 +225,12 @@ int main(int argc, char *argv[]) {
                     case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER:
                     case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
                         hud_cycle_theme(&ui, +1, now_ms);
+                        break;
+                    case SDL_CONTROLLER_BUTTON_DPAD_UP:
+                    case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
+                        if (ui.theme == HUD_THEME_EV_COCKPIT && ui.ev_style == EV_STYLE_BMW_I) {
+                            hud_cycle_bmw_view(&ui, +1, now_ms);
+                        }
                         break;
                     case SDL_CONTROLLER_BUTTON_Y:
                         if (ui.theme == HUD_THEME_EV_COCKPIT) {

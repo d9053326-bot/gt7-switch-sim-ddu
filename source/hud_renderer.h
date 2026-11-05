@@ -21,6 +21,14 @@ typedef enum {
 } ev_style_t;
 
 typedef enum {
+    BMW_VIEW_M_DYNAMIC    = 0,  /* Photos 1 & 2: BMW M Sport with Isometric Triangle Grid, Center Speed & ///M */
+    BMW_VIEW_MAP_COCKPIT  = 1,  /* Photo 3: Full 3D Navigation Map between Chevrons, Left Speed, Right Gear */
+    BMW_VIEW_ASSIST_RADAR = 2,  /* Photo 5: Assisted Driving Highway Corridor, 3D BMW in Lane & Speed Corridor */
+    BMW_VIEW_MINIMAL_MAP  = 3,  /* Photo 4: Minimalist Single-Bar Left Chevron with Wide Panoramic Map */
+    BMW_VIEW_COUNT        = 4
+} bmw_view_t;
+
+typedef enum {
     HUD_THEME_GT7        = 0,  /* Official Gran Turismo 7 Native HUD & MFD Style (Default) */
     HUD_THEME_DIGITACH   = 1,  /* High-Res Digital Tachometer & Telemetry Dashboard */
     HUD_THEME_EV_COCKPIT = 2,  /* Modern Luxury EV Digital Cockpit (Benz EQ / BMW i / Audi e-tron / Volvo) */
@@ -35,6 +43,7 @@ typedef enum {
 typedef struct {
     hud_theme_t theme;
     ev_style_t ev_style;     /* Sub-style for HUD_THEME_EV_COCKPIT */
+    bmw_view_t bmw_view;     /* Authentic BMW OS 8.5/9 layout: M Sport / 3D Map / Radar / Minimal */
     bool fullscreen_canvas;  /* True = 100% full-screen DDU (auto-hides top/bottom bars) */
     bool dock_visible;       /* True = Top/Bottom touch bars shown */
     uint32_t dock_hide_at_ms;/* Auto-hide timer when in fullscreen mode */
@@ -52,6 +61,7 @@ typedef struct {
 void hud_init(hud_ui_state_t *ui, const char *initial_ip);
 void hud_cycle_theme(hud_ui_state_t *ui, int dir, uint32_t now_ms);
 void hud_cycle_ev_style(hud_ui_state_t *ui, int dir, uint32_t now_ms);
+void hud_cycle_bmw_view(hud_ui_state_t *ui, int dir, uint32_t now_ms);
 void hud_render(SDL_Renderer *r, const gt7_state_t *state, const gt7_client_t *client, hud_ui_state_t *ui, uint32_t now_ms);
 bool hud_handle_touch_down(hud_ui_state_t *ui, gt7_client_t *client, gt7_state_t *state, int x, int y, uint32_t now_ms);
 bool hud_handle_touch_up(hud_ui_state_t *ui, int x, int y, uint32_t now_ms);

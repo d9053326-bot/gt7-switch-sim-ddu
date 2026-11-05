@@ -1,5 +1,5 @@
 # GT7 Switch Sim-DDU Pro (繁體中文)
-**版本號: `_aw_1.10.29.0950`**
+**版本號: `_aw_1.10.30.1350` (True OLED Black & Full Telemetry Edition)**
 
 [English](README_EN.md) | [日本語](README_JA.md) | [Deutsch](README_DE.md)
 
@@ -13,19 +13,23 @@
 
 ---
 
-## 🏆 內建 8 大專業賽車與頂級電動車數位儀表板模式
+## 🏆 內建 8 大專業賽車與頂級電動車數位儀表板模式（共 11 種視圖）
 
-### 1. 四大純電豪華品牌數位儀表板 (`3: EV`)
-| Mercedes-Benz MBUX Hyperscreen EQ | BMW i-Curved Display iDrive 9 M-EV |
+### 1. 四大純電豪華品牌數位儀表板 (`3: EV`) 與 BMW iDrive 9 專屬四視圖
+| Mercedes-Benz MBUX Hyperscreen EQ | BMW iDrive 9 `///M SPORT` 雙翼戰鬥儀表 |
 | :---: | :---: |
-| ![Benz MBUX EQ](assets/screenshots/03_mode_ev_benz_eq.png) | ![BMW i-Curved](assets/screenshots/04_mode_ev_bmw_i.png) |
-| **Audi Virtual Cockpit Plus e-tron GT** | **Volvo EX90 Scandinavian Minimalist** |
-| ![Audi e-tron GT](assets/screenshots/05_mode_ev_audi_etron.png) | ![Volvo EX90](assets/screenshots/06_mode_ev_volvo_ex.png) |
+| ![Benz MBUX EQ](assets/screenshots/03_mode_ev_benz_eq.png) | ![BMW M Sport](assets/screenshots/04a_mode_ev_bmw_m_dynamic.png) |
+| **BMW iDrive 9 `3D MAP` 雙側幾何導航** | **BMW iDrive 9 `RADAR` 智慧輔助駕駛雷達** |
+| ![BMW 3D Map](assets/screenshots/04b_mode_ev_bmw_nav_map.png) | ![BMW Radar](assets/screenshots/04c_mode_ev_bmw_assist_radar.png) |
+| **BMW iDrive 9 `REDUCED` 全景極簡地圖** | **Audi Virtual Cockpit Plus e-tron GT** |
+| ![BMW Reduced](assets/screenshots/04d_mode_ev_bmw_minimal_map.png) | ![Audi e-tron GT](assets/screenshots/05_mode_ev_audi_etron.png) |
+| **Volvo EX90 / Polestar Minimalist** | **全螢幕沉浸畫布模式 (`FULL`)** |
+| ![Volvo EX90](assets/screenshots/06_mode_ev_volvo_ex.png) | ![Fullscreen Canvas](assets/screenshots/13_fullscreen_canvas.png) |
 
-- **Mercedes-Benz MBUX Hyperscreen EQ**：經典雙圓懸浮儀表、霓虹青光環、0~100% 電能輸出與動能回收 (Recuperation)、PRND 檔位與中央 Hyperscreen 導航賽道雷達。
-- **BMW i-Curved Display (iDrive 9 ///M Electric)**：銳角幾何外框、BMW M 電能藍、油門到底啟動 `>> eBOOST <<` 爆閃、即時 G-Force 向量儀與 M-Sport 動能回充。
-- **Audi Virtual Cockpit Plus (e-tron GT RS)**：經典 Audi Sport 紅色指針動態弧線、0~100% Boost 電能功率圓錶、中央跨幅 MMI 賽道地圖與理論最速單圈分析。
-- **Volvo EX90 / Polestar Minimalist**：北歐極簡斯堪地那維亞奢華風格、中央純淨導航地圖與超大高對比時速、直立式線性電能/煞車回充光條。
+- **Mercedes-Benz MBUX Hyperscreen EQ**：雙圓懸浮放射星芒儀表、4MATIC 四驅扭力比例、四輪胎溫與接地材質 `[T/C/D]`、**AMG TRACK PACE** 單圈差時與避震行程監控。
+- **BMW i-Curved Display (iDrive OS 8.5 / 9 四視圖套件)**：點擊上方子視圖標籤或按 `B` / `V` 鍵切換 **`///M SPORT`**、**`3D MAP`**、**`RADAR`**、**`REDUCED`** 四種原廠實車畫面，完整整合 `///M CHASSIS` 底盤避震/滑移率/下壓力與 `///M LAP TIMER` 單圈三區段計時。
+- **Audi Virtual Cockpit Plus (RS e-tron GT)**：經典 Audi Sport 曲棍球桿轉速錶、雙環 Power/Torque、左上 **RS LAP TIMER** 與右上 **AUDI SPORT G-METER**。
+- **Volvo EX90 / Polestar Minimalist**：北歐極簡斯堪地那維亞風格、左側 **Polestar Engineered** 動力底盤數據、頂部黃金賽道分段膠囊與中央 3D 導航地圖。
 
 ---
 

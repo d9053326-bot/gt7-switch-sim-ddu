@@ -55,29 +55,35 @@ int main() {
         const char *name;
         hud_theme_t theme;
         ev_style_t ev_style;
+        bmw_view_t bmw_view;
         bool fullscreen;
         bool show_modal;
         uint32_t sim_time_ms;
     } captures[] = {
-        {"01_mode_gt7_official",     HUD_THEME_GT7,        EV_STYLE_BENZ_EQ,    false, false, 15000},
-        {"02_mode_digitach",         HUD_THEME_DIGITACH,   EV_STYLE_BENZ_EQ,    false, false, 18000},
-        {"03_mode_ev_benz_eq",       HUD_THEME_EV_COCKPIT, EV_STYLE_BENZ_EQ,    false, false, 21000},
-        {"04_mode_ev_bmw_i",         HUD_THEME_EV_COCKPIT, EV_STYLE_BMW_I,      false, false, 24000},
-        {"05_mode_ev_audi_etron",    HUD_THEME_EV_COCKPIT, EV_STYLE_AUDI_ETRON, false, false, 27000},
-        {"06_mode_ev_volvo_ex",      HUD_THEME_EV_COCKPIT, EV_STYLE_VOLVO_EX,   false, false, 30000},
-        {"07_mode_f1_wheel",         HUD_THEME_F1,         EV_STYLE_BENZ_EQ,    false, false, 33000},
-        {"08_mode_gt3_motec",        HUD_THEME_GT3,        EV_STYLE_BENZ_EQ,    false, false, 36000},
-        {"09_mode_rally_wrc",        HUD_THEME_RALLY,      EV_STYLE_BENZ_EQ,    false, false, 39000},
-        {"10_mode_jdm_defi",         HUD_THEME_JDM,        EV_STYLE_BENZ_EQ,    false, false, 42000},
-        {"11_mode_track_radar",      HUD_THEME_TRACK,      EV_STYLE_BENZ_EQ,    false, false, 45000},
-        {"12_ip_touch_modal",        HUD_THEME_GT7,        EV_STYLE_BENZ_EQ,    false, true,  15000},
-        {"13_fullscreen_canvas",     HUD_THEME_EV_COCKPIT, EV_STYLE_BENZ_EQ,    true,  false, 21000}
+        {"01_mode_gt7_official",       HUD_THEME_GT7,        EV_STYLE_BENZ_EQ,    BMW_VIEW_M_DYNAMIC,    false, false, 15000},
+        {"02_mode_digitach",           HUD_THEME_DIGITACH,   EV_STYLE_BENZ_EQ,    BMW_VIEW_M_DYNAMIC,    false, false, 18000},
+        {"03_mode_ev_benz_eq",         HUD_THEME_EV_COCKPIT, EV_STYLE_BENZ_EQ,    BMW_VIEW_M_DYNAMIC,    false, false, 21000},
+        {"04_mode_ev_bmw_i",           HUD_THEME_EV_COCKPIT, EV_STYLE_BMW_I,      BMW_VIEW_M_DYNAMIC,    false, false, 24000},
+        {"04a_mode_ev_bmw_m_dynamic",  HUD_THEME_EV_COCKPIT, EV_STYLE_BMW_I,      BMW_VIEW_M_DYNAMIC,    false, false, 24000},
+        {"04b_mode_ev_bmw_nav_map",    HUD_THEME_EV_COCKPIT, EV_STYLE_BMW_I,      BMW_VIEW_MAP_COCKPIT,  false, false, 24000},
+        {"04c_mode_ev_bmw_assist_radar", HUD_THEME_EV_COCKPIT, EV_STYLE_BMW_I,    BMW_VIEW_ASSIST_RADAR, false, false, 24000},
+        {"04d_mode_ev_bmw_minimal_map", HUD_THEME_EV_COCKPIT, EV_STYLE_BMW_I,    BMW_VIEW_MINIMAL_MAP,  false, false, 24000},
+        {"05_mode_ev_audi_etron",      HUD_THEME_EV_COCKPIT, EV_STYLE_AUDI_ETRON, BMW_VIEW_M_DYNAMIC,    false, false, 27000},
+        {"06_mode_ev_volvo_ex",        HUD_THEME_EV_COCKPIT, EV_STYLE_VOLVO_EX,   BMW_VIEW_M_DYNAMIC,    false, false, 30000},
+        {"07_mode_f1_wheel",           HUD_THEME_F1,         EV_STYLE_BENZ_EQ,    BMW_VIEW_M_DYNAMIC,    false, false, 33000},
+        {"08_mode_gt3_motec",          HUD_THEME_GT3,        EV_STYLE_BENZ_EQ,    BMW_VIEW_M_DYNAMIC,    false, false, 36000},
+        {"09_mode_rally_wrc",          HUD_THEME_RALLY,      EV_STYLE_BENZ_EQ,    BMW_VIEW_M_DYNAMIC,    false, false, 39000},
+        {"10_mode_jdm_defi",           HUD_THEME_JDM,        EV_STYLE_BENZ_EQ,    BMW_VIEW_M_DYNAMIC,    false, false, 42000},
+        {"11_mode_track_radar",        HUD_THEME_TRACK,      EV_STYLE_BENZ_EQ,    BMW_VIEW_M_DYNAMIC,    false, false, 45000},
+        {"12_ip_touch_modal",          HUD_THEME_GT7,        EV_STYLE_BENZ_EQ,    BMW_VIEW_M_DYNAMIC,    false, true,  15000},
+        {"13_fullscreen_canvas",       HUD_THEME_EV_COCKPIT, EV_STYLE_BENZ_EQ,    BMW_VIEW_M_DYNAMIC,    true,  false, 21000}
     };
 
     int num_captures = sizeof(captures) / sizeof(captures[0]);
     for (int i = 0; i < num_captures; ++i) {
         ui.theme = captures[i].theme;
         ui.ev_style = captures[i].ev_style;
+        ui.bmw_view = captures[i].bmw_view;
         ui.fullscreen_canvas = captures[i].fullscreen;
         ui.dock_visible = !captures[i].fullscreen;
         ui.show_ip_modal = captures[i].show_modal;

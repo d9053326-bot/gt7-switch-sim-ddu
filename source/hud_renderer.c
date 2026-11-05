@@ -172,15 +172,26 @@ static const uint8_t FONT5X7[96][5] = {
     ['~' - 32] = {0x08, 0x04, 0x08, 0x10, 0x08},
 };
 
+static const uint8_t GLYPH_DEGREE[5] = {0x06, 0x09, 0x09, 0x06, 0x00};
+
 static void draw_text(SDL_Renderer *r, const char *str, int x, int y, int scale, rgba_t c) {
     if (!str) return;
     set_color(r, c);
     int cx = x;
     for (const char *p = str; *p; ++p) {
-        char ch = *p;
-        if (ch >= 'a' && ch <= 'z') ch -= 32;
-        if (ch < 32 || ch > 126) ch = ' ';
-        const uint8_t *glyph = FONT5X7[ch - 32];
+        const uint8_t *glyph = NULL;
+        uint8_t u0 = (uint8_t)p[0];
+        if (u0 == 0xC2 && (uint8_t)p[1] == 0xB0) {
+            glyph = GLYPH_DEGREE;
+            ++p;
+        } else if (u0 == 0xB0) {
+            glyph = GLYPH_DEGREE;
+        } else {
+            char ch = *p;
+            if (ch >= 'a' && ch <= 'z') ch -= 32;
+            if (ch < 32 || ch > 126) ch = ' ';
+            glyph = FONT5X7[ch - 32];
+        }
         for (int col = 0; col < 5; ++col) {
             uint8_t bits = glyph[col];
             for (int row = 0; row < 7; ++row) {
@@ -196,7 +207,14 @@ static void draw_text(SDL_Renderer *r, const char *str, int x, int y, int scale,
 
 static int text_width(const char *str, int scale) {
     if (!str || !*str) return 0;
-    return (int)strlen(str) * 6 * scale - scale;
+    int chars = 0;
+    for (const char *p = str; *p; ++p) {
+        if ((uint8_t)p[0] == 0xC2 && (uint8_t)p[1] == 0xB0) {
+            ++p;
+        }
+        ++chars;
+    }
+    return chars * 6 * scale - scale;
 }
 
 static void draw_text_centered(SDL_Renderer *r, const char *str, int cx, int y, int scale, rgba_t c) {
@@ -417,6 +435,14 @@ static void draw_modern_char(SDL_Renderer *r, char ch, int x, int y, int w, int 
             draw_thick_line(r, x + t / 2, y + t / 2, x + w - t / 2, y + h - t / 2, t, col);
             break;
 
+        case 'B':
+            fill_rect(r, x, y, t, h, col);
+            fill_rect(r, x, y, w - t, t, col);
+            fill_rect(r, x, y + h / 2 - t / 2, w - t, t, col);
+            fill_rect(r, x, y + h - t, w - t, t, col);
+            fill_rect(r, x + w - t, y + t, t, h / 2 - t * 3 / 2, col);
+            fill_rect(r, x + w - t, y + h / 2 + t / 2, t, h / 2 - t * 3 / 2, col);
+            break;
         case 'D':
             fill_rect(r, x, y, t, h, col);
             fill_rect(r, x, y, w - t - pad, t, col);
@@ -555,6 +581,7 @@ void hud_init(hud_ui_state_t *ui, const char *initial_ip) {
     memset(ui, 0, sizeof(*ui));
     ui->theme = HUD_THEME_GT7;
     ui->ev_style = EV_STYLE_BENZ_EQ;
+    ui->bmw_view = BMW_VIEW_M_DYNAMIC;
     ui->fullscreen_canvas = false;
     ui->dock_visible = true;
     ui->use_mph = false;
@@ -576,6 +603,13 @@ void hud_cycle_ev_style(hud_ui_state_t *ui, int dir, uint32_t now_ms) {
     if (next < 0) next += (int)EV_STYLE_COUNT;
     ui->ev_style = (ev_style_t)next;
     ui->theme_banner_until_ms = now_ms + 2000;
+}
+
+void hud_cycle_bmw_view(hud_ui_state_t *ui, int dir, uint32_t now_ms) {
+    int next = ((int)ui->bmw_view + dir) % (int)BMW_VIEW_COUNT;
+    if (next < 0) next += (int)BMW_VIEW_COUNT;
+    ui->bmw_view = (bmw_view_t)next;
+    ui->theme_banner_until_ms = now_ms + 1800;
 }
 
 /* Shared helper: Top F1/GT3 15-LED RPM Shift Light Array */
@@ -620,22 +654,31 @@ static void draw_rpm_led_strip(SDL_Renderer *r, const gt7_state_t *state, uint32
 /* Shared helper: 4-Wheel Tire Temp + Slip + Suspension Widget */
 static void draw_tires_widget(SDL_Renderer *r, const gt7_state_t *state, int x, int y, int w, int h, rgba_t accent) {
     draw_panel(r, x, y, w, h, rgba(0, 0, 0, 255), accent, 10);
-    draw_text(r, "TIRE SURFACE & TRACTION", x + 16, y + 12, 2, accent);
+    draw_text(r, "TIRE SURFACE & TRACTION", x + 16, y + 10, 2, accent);
 
     static const char *labels[4] = {"FL", "FR", "RL", "RR"};
-    int box_w = 72, box_h = (h > 300) ? 102 : 82;
+    int box_w = 72, box_h = (h > 310) ? 94 : 76;
     int cx = x + w / 2;
-    int cy = y + h / 2 + 12;
+    int cy = y + h / 2 + 2;
 
-    draw_rect(r, cx - 32, cy - 58, 64, 116, 2, rgba(55, 65, 88, 255));
-    SDL_RenderDrawLine(r, cx - 52, cy - 48, cx + 52, cy - 48);
-    SDL_RenderDrawLine(r, cx - 52, cy + 48, cx + 52, cy + 48);
+    draw_rect(r, cx - 34, cy - 52, 68, 104, 2, rgba(55, 65, 88, 255));
+    SDL_RenderDrawLine(r, cx - 52, cy - 42, cx + 52, cy - 42);
+    SDL_RenderDrawLine(r, cx - 52, cy + 42, cx + 52, cy + 42);
+
+    /* Center Chassis Telemetry inside car frame (Wheelbase, Ride Height, Clutch) */
+    char c_info[32];
+    snprintf(c_info, sizeof(c_info), "RH %.0f", state->body_height > 0 ? state->body_height : 49.0f);
+    draw_text_centered(r, c_info, cx, cy - 26, 1, rgba(170, 190, 215, 255));
+    snprintf(c_info, sizeof(c_info), "WB %.1fM", state->wheel_base_m > 0.5f ? state->wheel_base_m : 2.75f);
+    draw_text_centered(r, c_info, cx, cy - 4, 1, accent);
+    snprintf(c_info, sizeof(c_info), "CLU %.0f%%", (100.0f - state->clutch_pct));
+    draw_text_centered(r, c_info, cx, cy + 18, 1, rgba(0, 235, 120, 255));
 
     int pos[4][2] = {
-        {x + 24, cy - box_h - 8},
-        {x + w - 24 - box_w, cy - box_h - 8},
-        {x + 24, cy + 8},
-        {x + w - 24 - box_w, cy + 8}
+        {x + 20, cy - box_h - 6},
+        {x + w - 20 - box_w, cy - box_h - 6},
+        {x + 20, cy + 6},
+        {x + w - 20 - box_w, cy + 6}
     };
 
     for (int i = 0; i < 4; ++i) {
@@ -650,14 +693,14 @@ static void draw_tires_widget(SDL_Renderer *r, const gt7_state_t *state, int x, 
             draw_rect(r, tx, ty, box_w, box_h, 2, rgba(220, 230, 245, 180));
         }
 
-        draw_text_centered(r, labels[i], tx + box_w / 2, ty + 10, 2, rgba(10, 12, 16, 255));
+        draw_text_centered(r, labels[i], tx + box_w / 2, ty + 8, 2, rgba(10, 12, 16, 255));
         char tbuf[16];
         snprintf(tbuf, sizeof(tbuf), "%.0fC", state->tire_temp[i]);
         draw_text_centered(r, tbuf, tx + box_w / 2, ty + box_h / 2 - 8, 3, rgba(10, 12, 16, 255));
 
         /* Packet C Surface Contact Patch Badge: T=Tarmac, C=Curb, D=Dirt, G=Grass, S=Snow */
         char surf_char = (state->surface_type[i] != 0) ? (char)state->surface_type[i] : 'T';
-        rgba_t surf_bg = rgba(14, 22, 34, 255);
+        rgba_t surf_bg = rgba(0, 0, 0, 255);
         rgba_t surf_fg = rgba(0, 225, 255, 255);
         if (surf_char == 'C' || surf_char == 'c') {
             surf_bg = rgba(245, 175, 20, 255);
@@ -666,18 +709,26 @@ static void draw_tires_widget(SDL_Renderer *r, const gt7_state_t *state, int x, 
             surf_bg = rgba(225, 45, 45, 255);
             surf_fg = rgba(255, 255, 255, 255);
         }
-        int s_badge_y = ty + box_h - 22;
-        fill_rect(r, tx + 6, s_badge_y, box_w - 12, 17, surf_bg);
+        int s_badge_y = ty + box_h - 20;
+        fill_rect(r, tx + 6, s_badge_y, box_w - 12, 15, surf_bg);
         char s_str[8] = { surf_char, '\0' };
-        draw_text_centered(r, s_str, tx + box_w / 2, s_badge_y + 2, 2, surf_fg);
+        draw_text_centered(r, s_str, tx + box_w / 2, s_badge_y + 1, 2, surf_fg);
 
-        int susp_h = (int)(state->susp_height[i] * 0.75f);
+        int susp_h = (int)(state->susp_height[i] * 0.72f);
         if (susp_h < 4) susp_h = 4;
         if (susp_h > box_h - 8) susp_h = box_h - 8;
-        int sx = (i % 2 == 0) ? (tx + box_w + 6) : (tx - 13);
-        fill_rect(r, sx, ty, 7, box_h, rgba(28, 34, 46, 255));
+        int sx = (i % 2 == 0) ? (tx + box_w + 5) : (tx - 12);
+        fill_rect(r, sx, ty, 7, box_h, rgba(16, 22, 32, 255));
         fill_rect(r, sx, ty + box_h - susp_h, 7, susp_h, rgba(0, 220, 255, 255));
     }
+
+    /* Footer: 4-Wheel Slip % & Suspension Compression Summary */
+    char foot_buf[64];
+    snprintf(foot_buf, sizeof(foot_buf), "SLIP: %.0f/%.0f/%.0f/%.0f%%  SUSP: %.0f/%.0fMM",
+             state->tire_slip_ratio[0] * 100.0f, state->tire_slip_ratio[1] * 100.0f,
+             state->tire_slip_ratio[2] * 100.0f, state->tire_slip_ratio[3] * 100.0f,
+             state->susp_height[0], state->susp_height[2]);
+    draw_text_centered(r, foot_buf, cx, y + h - 18, 1, rgba(175, 195, 220, 255));
 }
 
 /* Shared helper: G-Force Meter + Live Pedal Telemetry Trace Graph */
@@ -686,8 +737,8 @@ static void draw_gforce_and_trace(SDL_Renderer *r, const gt7_state_t *state, int
     draw_text(r, "G-LOAD & TELEMETRY TRACE", x + 16, y + 10, 2, accent);
 
     int g_cx = x + 78;
-    int g_cy = y + h / 2 + 10;
-    int g_rad = (h > 240) ? 58 : 48;
+    int g_cy = y + h / 2 + 6;
+    int g_rad = (h > 240) ? 54 : 44;
     fill_circle(r, g_cx, g_cy, g_rad, rgba(0, 0, 0, 255));
     draw_circle(r, g_cx, g_cy, g_rad, 2, rgba(70, 85, 110, 255));
     draw_circle(r, g_cx, g_cy, g_rad / 2, 1, rgba(45, 55, 75, 255));
@@ -700,16 +751,24 @@ static void draw_gforce_and_trace(SDL_Renderer *r, const gt7_state_t *state, int
     fill_circle(r, dot_x, dot_y, 7, rgba(255, 55, 75, 255));
     draw_circle(r, dot_x, dot_y, 7, 2, rgba(255, 255, 255, 255));
 
-    char gbuf[32];
-    snprintf(gbuf, sizeof(gbuf), "%.1fG", sqrtf(state->g_lat * state->g_lat + state->g_lon * state->g_lon));
-    draw_text_centered(r, gbuf, g_cx, g_cy + g_rad + 6, 2, rgba(210, 225, 245, 255));
+    char gbuf[48];
+    snprintf(gbuf, sizeof(gbuf), "%.1fG (%+.1f/%+.1f)",
+             sqrtf(state->g_lat * state->g_lat + state->g_lon * state->g_lon),
+             state->g_lat, state->g_lon);
+    draw_text_centered(r, gbuf, g_cx, g_cy + g_rad + 6, 1, rgba(210, 225, 245, 255));
 
     int gx = x + 150;
     int gy = y + 34;
     int gw = w - 166;
     int gh = h - 46;
-    fill_rect(r, gx, gy, gw, gh, rgba(8, 10, 16, 255));
+    /* True OLED Pitch Black Trace Canvas */
+    fill_rect(r, gx, gy, gw, gh, rgba(0, 0, 0, 255));
     draw_rect(r, gx, gy, gw, gh, 1, rgba(45, 55, 75, 255));
+    set_color(r, rgba(25, 34, 48, 255));
+    SDL_RenderDrawLine(r, gx, gy + gh / 2, gx + gw, gy + gh / 2);
+
+    snprintf(gbuf, sizeof(gbuf), "T:%.0f%% B:%.0f%%", state->throttle_pct, state->brake_pct);
+    draw_text_right(r, gbuf, gx + gw - 6, gy + 6, 1, rgba(160, 185, 215, 255));
 
     for (int i = 1; i < GT7_TRACE_LEN; ++i) {
         int idx0 = (state->trace_head + i - 1) % GT7_TRACE_LEN;
@@ -946,22 +1005,41 @@ static void render_theme_gt7_official(SDL_Renderer *r, const gt7_state_t *state,
     draw_text(r, "LAPS", fx + 38, fy + 10, 2, gt_silver);
     draw_text(r, pbuf, fx + 38, fy + 32, 3, (laps_rem < 2.0f) ? gt_red : gt_green);
 
+    /* Middle of Left Panel: 4-Wheel Suspension Travel, Steering & Hybrid Regen (Packet B/~/C) */
+    int susp_y = t_cy + 92;
+    int gy_sep = bl_y + bl_h - 125;
+    if (gy_sep - susp_y >= 56) {
+        SDL_RenderDrawLine(r, 34, susp_y, 345, susp_y);
+        snprintf(pbuf, sizeof(pbuf), "SUSP: %.0f/%.0f/%.0f/%.0fMM",
+                 state->susp_height[0], state->susp_height[1],
+                 state->susp_height[2], state->susp_height[3]);
+        draw_text(r, pbuf, 36, susp_y + 10, 2, gt_cyan);
+        snprintf(pbuf, sizeof(pbuf), "STEER: %+.1fD  REGEN: %+.0fKW",
+                 state->steer_angle_fl_deg, state->energy_recovery_kw);
+        draw_text(r, pbuf, 36, susp_y + 34, 2, gt_white);
+        if (gy_sep - susp_y >= 80) {
+            snprintf(pbuf, sizeof(pbuf), "SLIP: %.0f/%.0f%%  TV: %.0f/%.0fNM",
+                     state->tire_slip_ratio[0] * 100.0f, state->tire_slip_ratio[2] * 100.0f,
+                     state->torque_vector_nm[0], state->torque_vector_nm[2]);
+            draw_text(r, pbuf, 36, susp_y + 58, 2, gt_silver);
+        }
+    }
+
     /* Bottom of Left Panel: G-Force & Water/Oil Temps */
-    int gy_sep = bl_y + bl_h - 145;
     SDL_RenderDrawLine(r, 34, gy_sep, 345, gy_sep);
     snprintf(pbuf, sizeof(pbuf), "WATER: %.0f C     OIL: %.0f C", state->water_temp, state->oil_temp);
-    draw_text(r, pbuf, 36, gy_sep + 14, 2, gt_silver);
-    snprintf(pbuf, sizeof(pbuf), "OIL PRESS: %.1f BAR   RIDE: %.0fMM", state->oil_pressure, state->body_height);
-    draw_text(r, pbuf, 36, gy_sep + 42, 2, gt_silver);
+    draw_text(r, pbuf, 36, gy_sep + 10, 2, gt_silver);
+    snprintf(pbuf, sizeof(pbuf), "OIL P: %.1fB     RIDE: %.0fMM", state->oil_pressure, state->body_height);
+    draw_text(r, pbuf, 36, gy_sep + 34, 2, gt_silver);
 
     /* GT7 Lateral/Longitudinal G-Force Ball Bar */
-    draw_text(r, "G-LOAD", 36, gy_sep + 76, 2, gt_cyan);
-    fill_rect(r, 36, gy_sep + 98, 308, 16, rgba(24, 30, 42, 255));
-    SDL_RenderDrawLine(r, 190, gy_sep + 94, 190, gy_sep + 118);
+    draw_text(r, "G-LOAD", 36, gy_sep + 62, 2, gt_cyan);
+    fill_rect(r, 36, gy_sep + 84, 308, 16, rgba(16, 22, 32, 255));
+    SDL_RenderDrawLine(r, 190, gy_sep + 80, 190, gy_sep + 104);
     int g_bx = 190 + (int)((state->g_lat / 2.2f) * 140);
-    fill_circle(r, g_bx, gy_sep + 106, 8, gt_cyan);
+    fill_circle(r, g_bx, gy_sep + 92, 8, gt_cyan);
     snprintf(pbuf, sizeof(pbuf), "%+.1fG / %+.1fG", state->g_lat, state->g_lon);
-    draw_text_right(r, pbuf, 344, gy_sep + 76, 2, gt_white);
+    draw_text_right(r, pbuf, 344, gy_sep + 62, 2, gt_white);
 
     /* 5. Center Masterpiece: Official GT7 Curved Horizon RPM Bar + Speed + Gear + Suggested Gear + Turbo Gauge */
     int c_y = top_y + 62;
@@ -1016,7 +1094,7 @@ static void render_theme_gt7_official(SDL_Renderer *r, const gt7_state_t *state,
 
     /* GT7 Vertical Curved Brake (Left, Red) & Throttle (Right, White/Cyan) Arcs flanking Center Pod */
     int ped_y = c_y + 135;
-    int ped_h = c_h - 210;
+    int ped_h = c_h - 224;
     /* Left Brake Pillar */
     fill_rect(r, 400, ped_y, 26, ped_h, rgba(32, 20, 24, 255));
     int b_fill = (int)((state->brake_pct / 100.0f) * ped_h);
@@ -1034,7 +1112,7 @@ static void render_theme_gt7_official(SDL_Renderer *r, const gt7_state_t *state,
     draw_text_centered(r, "THR", 861, ped_y + ped_h + 8, 2, gt_cyan);
 
     /* GT7 Center Turbo Boost Half-Moon Dial (Above Speed/Gear) */
-    int t_dial_cx = 637, t_dial_cy = c_y + 185, t_dial_r = 46;
+    int t_dial_cx = 637, t_dial_cy = c_y + 168, t_dial_r = 42;
     draw_circle(r, t_dial_cx, t_dial_cy, t_dial_r, 3, rgba(60, 75, 98, 255));
     float b_clamped = state->turbo_bar;
     if (b_clamped < -1.0f) b_clamped = -1.0f;
@@ -1045,10 +1123,22 @@ static void render_theme_gt7_official(SDL_Renderer *r, const gt7_state_t *state,
                     t_dial_cy + (int)(sinf(b_ang) * (t_dial_r - 6)), 4, gt_red);
     fill_circle(r, t_dial_cx, t_dial_cy, 6, gt_white);
     snprintf(pbuf, sizeof(pbuf), "BOOST %+.2f BAR", state->turbo_bar);
-    draw_text_centered(r, pbuf, t_dial_cx, t_dial_cy + 14, 2, gt_silver);
+    draw_text_centered(r, pbuf, t_dial_cx, t_dial_cy + 12, 2, gt_silver);
+
+    /* Drivetrain & Aero Telemetry Ribbon between Boost Dial and Speed/Gear */
+    int drv_y = t_dial_cy + 40;
+    fill_rect(r, 440, drv_y, 394, 54, rgba(0, 0, 0, 255));
+    draw_rect(r, 440, drv_y, 394, 54, 1, rgba(55, 70, 95, 255));
+    snprintf(pbuf, sizeof(pbuf), "CLU: %.0f%%  GBX: %.0f  WB: %.2fM",
+             (100.0f - state->clutch_pct), state->engine_rpm,
+             state->wheel_base_m > 0.5f ? state->wheel_base_m : 2.75f);
+    draw_text_centered(r, pbuf, 637, drv_y + 8, 2, gt_cyan);
+    snprintf(pbuf, sizeof(pbuf), "AERO: %.0f/%.0fKG   TOP: %.0fKM/H",
+             state->downforce_front_kg, state->downforce_rear_kg, state->session_top_speed_kmh);
+    draw_text_centered(r, pbuf, 637, drv_y + 30, 2, gt_silver);
 
     /* GT7 Center Digital Speed (Left-Center) & Gear + Blinking Red Suggested Gear Box (Right-Center) */
-    int main_row_y = c_y + c_h - 245;
+    int main_row_y = c_y + c_h - 235;
     int spd = (int)roundf(ui->use_mph ? state->speed_mph : state->speed_kmh);
     draw_7seg_number(r, spd, 3, false, 625, main_row_y + 18, 56, 98, 12, 10, gt_white, rgba(22, 28, 40, 255));
     draw_text_right(r, ui->use_mph ? "MPH" : "KM/H", 625, main_row_y + 128, 3, gt_silver);
@@ -1101,7 +1191,7 @@ static void render_theme_gt7_official(SDL_Renderer *r, const gt7_state_t *state,
     int page = state->mfd_page % 4;
     if (page == 0) {
         /* MFD Page 1: Circuit Radar & Sector Splits */
-        draw_text(r, "PAGE 1/4: CIRCUIT RADAR & SECTORS", 928, mfd_y + 44, 2, gt_white);
+        draw_text(r, "PAGE 1/4: CIRCUIT & SECTORS", 928, mfd_y + 44, 2, gt_white);
         int map_x = 936, map_y = mfd_y + 72, map_w = 302, map_h = mfd_h - 175;
         fill_rect(r, map_x, map_y, map_w, map_h, rgba(0, 0, 0, 255));
         draw_rect(r, map_x, map_y, map_w, map_h, 1, rgba(45, 60, 85, 255));
@@ -1112,7 +1202,7 @@ static void render_theme_gt7_official(SDL_Renderer *r, const gt7_state_t *state,
         int sec_y = mfd_y + mfd_h - 90;
         for (int s = 0; s < 3; ++s) {
             int bx = 930 + s * 106;
-            fill_rect(r, bx, sec_y, 98, 72, rgba(20, 26, 38, 255));
+            fill_rect(r, bx, sec_y, 98, 72, rgba(0, 0, 0, 255));
             draw_rect(r, bx, sec_y, 98, 72, 1, (state->current_sector == s) ? gt_cyan : rgba(60, 72, 92, 255));
             snprintf(pbuf, sizeof(pbuf), "SECTOR %d", s + 1);
             draw_text_centered(r, pbuf, bx + 49, sec_y + 10, 2, gt_silver);
@@ -1129,9 +1219,9 @@ static void render_theme_gt7_official(SDL_Renderer *r, const gt7_state_t *state,
         for (int m = 1; m <= 6; ++m) {
             int mx = 936 + (m - 1) * 51;
             bool sel = (state->gt7_fuel_map == m);
-            fill_rect(r, mx, mfd_y + 136, 45, 54, sel ? gt_cyan : rgba(26, 32, 46, 255));
+            fill_rect(r, mx, mfd_y + 136, 45, 54, sel ? gt_cyan : rgba(18, 24, 34, 255));
             snprintf(pbuf, sizeof(pbuf), "%d", m);
-            draw_text_centered(r, pbuf, mx + 22, mfd_y + 152, 3, sel ? rgba(10, 14, 20, 255) : gt_white);
+            draw_text_centered(r, pbuf, mx + 22, mfd_y + 152, 3, sel ? rgba(0, 0, 0, 255) : gt_white);
         }
 
         snprintf(pbuf, sizeof(pbuf), "AVG CONSUMPTION: %.1f%% / LAP", state->fuel_burn_per_lap);
@@ -1150,12 +1240,12 @@ static void render_theme_gt7_official(SDL_Renderer *r, const gt7_state_t *state,
         for (int b = -5; b <= 5; ++b) {
             int bx = 934 + (b + 5) * 28;
             bool sel = (state->gt7_brake_bal == b);
-            fill_rect(r, bx, mfd_y + 102, 24, 28, sel ? gt_red : rgba(28, 34, 48, 255));
+            fill_rect(r, bx, mfd_y + 102, 24, 28, sel ? gt_red : rgba(18, 24, 34, 255));
         }
 
-        /* Live scrolling Throttle/Brake graph inside MFD */
+        /* Live scrolling Throttle/Brake graph inside MFD on True OLED Black */
         int gx = 932, gy = mfd_y + 148, gw = 310, gh = mfd_h - 170;
-        fill_rect(r, gx, gy, gw, gh, rgba(8, 10, 16, 255));
+        fill_rect(r, gx, gy, gw, gh, rgba(0, 0, 0, 255));
         draw_rect(r, gx, gy, gw, gh, 1, rgba(50, 62, 84, 255));
         for (int i = 1; i < GT7_TRACE_LEN; ++i) {
             int idx0 = (state->trace_head + i - 1) % GT7_TRACE_LEN;
@@ -1300,9 +1390,11 @@ static void render_theme_digitach(SDL_Renderer *r, const gt7_state_t *state, con
         if (mk_x >= tbar_x && mk_x <= tbar_x + tbar_w) {
             set_color(r, rgba(70, 85, 115, 255));
             SDL_RenderDrawLine(r, mk_x, tbar_y - 4, mk_x, tbar_y - 1);
-            char kstr[16];
-            snprintf(kstr, sizeof(kstr), "%d", k);
-            draw_text(r, kstr, mk_x - 3, tach_panel_y + 18, 1, text_dim);
+            if (mk_x < 1045) {
+                char kstr[16];
+                snprintf(kstr, sizeof(kstr), "%d", k);
+                draw_text(r, kstr, mk_x - 3, tach_panel_y + 18, 1, text_dim);
+            }
         }
     }
 
@@ -1365,25 +1457,46 @@ static void render_theme_digitach(SDL_Renderer *r, const gt7_state_t *state, con
                            (state->cur_sector_ms[s] <= state->best_sector_ms[s]) ? neon_purple : text_bright);
     }
 
-    /* Engine Vitals Footer in Left Box */
+    /* Engine & Chassis Vitals Footer in Left Box */
     int eng_y = sec_y + 72;
     fill_rect(r, left_x + 14, eng_y, col_w - 28, body_h - (eng_y - body_y) - 12, ddu_slot);
-    draw_text(r, "WATER TEMP", left_x + 22, eng_y + 12, 2, text_dim);
+    draw_rect(r, left_x + 14, eng_y, col_w - 28, body_h - (eng_y - body_y) - 12, 1, rgba(35, 50, 75, 255));
+    draw_text(r, "WATER TEMP", left_x + 22, eng_y + 8, 2, text_dim);
     snprintf(buf, sizeof(buf), "%.0f C", state->water_temp);
-    draw_text_right(r, buf, left_x + col_w - 22, eng_y + 12, 2, (state->water_temp > 105.0f) ? neon_red : neon_green);
+    draw_text_right(r, buf, left_x + col_w - 22, eng_y + 8, 2, (state->water_temp > 105.0f) ? neon_red : neon_green);
 
-    draw_text(r, "OIL TEMP", left_x + 22, eng_y + 38, 2, text_dim);
-    snprintf(buf, sizeof(buf), "%.0f C", state->oil_temp);
-    draw_text_right(r, buf, left_x + col_w - 22, eng_y + 38, 2, (state->oil_temp > 120.0f) ? neon_red : text_bright);
+    draw_text(r, "OIL T / PRESS", left_x + 22, eng_y + 30, 2, text_dim);
+    snprintf(buf, sizeof(buf), "%.0fC / %.1fB", state->oil_temp, state->oil_pressure);
+    draw_text_right(r, buf, left_x + col_w - 22, eng_y + 30, 2, (state->oil_temp > 120.0f) ? neon_red : text_bright);
 
-    draw_text(r, "OIL PRESS", left_x + 22, eng_y + 64, 2, text_dim);
-    snprintf(buf, sizeof(buf), "%.1f BAR", state->oil_pressure);
-    draw_text_right(r, buf, left_x + col_w - 22, eng_y + 64, 2, text_bright);
+    draw_text(r, "BOOST / TURBO", left_x + 22, eng_y + 52, 2, text_dim);
+    snprintf(buf, sizeof(buf), "%+.2f BAR", state->turbo_bar);
+    draw_text_right(r, buf, left_x + col_w - 22, eng_y + 52, 2, neon_cyan);
 
-    if (state->flags & GT7_FLAG_HAS_TURBO) {
-        draw_text(r, "BOOST / TURBO", left_x + 22, eng_y + 90, 2, text_dim);
-        snprintf(buf, sizeof(buf), "%+.2f BAR", state->turbo_bar);
-        draw_text_right(r, buf, left_x + col_w - 22, eng_y + 90, 2, neon_cyan);
+    draw_text(r, "SUSP (MM)", left_x + 22, eng_y + 74, 2, text_dim);
+    snprintf(buf, sizeof(buf), "%.0f/%.0f/%.0f/%.0f",
+             state->susp_height[0], state->susp_height[1],
+             state->susp_height[2], state->susp_height[3]);
+    draw_text_right(r, buf, left_x + col_w - 22, eng_y + 74, 2, neon_yellow);
+
+    draw_text(r, "WHEEL RAD/S", left_x + 22, eng_y + 96, 2, text_dim);
+    snprintf(buf, sizeof(buf), "%.0f / %.0f",
+             (state->wheel_angular_speed[0] + state->wheel_angular_speed[1]) * 0.5f,
+             (state->wheel_angular_speed[2] + state->wheel_angular_speed[3]) * 0.5f);
+    draw_text_right(r, buf, left_x + col_w - 22, eng_y + 96, 2, text_bright);
+
+    if (body_h - (eng_y - body_y) >= 145) {
+        draw_text(r, "ERS / TORQ V", left_x + 22, eng_y + 118, 2, text_dim);
+        snprintf(buf, sizeof(buf), "%+.0fKW %.0f/%.0f",
+                 state->energy_recovery_kw, state->torque_vector_nm[0], state->torque_vector_nm[2]);
+        draw_text_right(r, buf, left_x + col_w - 22, eng_y + 118, 2, neon_green);
+    }
+    if (body_h - (eng_y - body_y) >= 170) {
+        draw_text(r, "TIRE SLIP %", left_x + 22, eng_y + 140, 2, text_dim);
+        snprintf(buf, sizeof(buf), "%.0f/%.0f/%.0f/%.0f%%",
+                 state->tire_slip_ratio[0] * 100.0f, state->tire_slip_ratio[1] * 100.0f,
+                 state->tire_slip_ratio[2] * 100.0f, state->tire_slip_ratio[3] * 100.0f);
+        draw_text_right(r, buf, left_x + col_w - 22, eng_y + 140, 2, neon_cyan);
     }
 
     /* ---------------- CENTER COLUMN: GIANT GEAR, SPEED & PEDALS ---------------- */
@@ -1490,6 +1603,14 @@ static void render_theme_digitach(SDL_Renderer *r, const gt7_state_t *state, con
         draw_text(r, buf, center_x + 36, fuel_strip_y + 78, 2, rgba(160, 185, 215, 255));
     }
 
+    /* Row 5: Clutch Engagement, Gearbox RPM & Wheelbase (Packet A/C) */
+    if (body_h - (fuel_strip_y - body_y) >= 125) {
+        snprintf(buf, sizeof(buf), "CLUTCH: %.0f%%   GBX: %.0f   WB: %.2fM",
+                 (100.0f - state->clutch_pct), state->engine_rpm,
+                 state->wheel_base_m > 0.5f ? state->wheel_base_m : 2.75f);
+        draw_text(r, buf, center_x + 36, fuel_strip_y + 100, 2, neon_green);
+    }
+
     /* ---------------- RIGHT COLUMN: 4 TIRES & GPS CIRCUIT RADAR ---------------- */
     draw_panel(r, right_x, body_y, col_w, body_h, ddu_dark, neon_cyan, 12);
     draw_text(r, "TIRE SURFACE TEMPERATURE", right_x + 16, body_y + 14, 2, neon_cyan);
@@ -1552,7 +1673,7 @@ static void render_theme_digitach(SDL_Renderer *r, const gt7_state_t *state, con
     /* Mini GPS Circuit Radar */
     int mrad_y = ast_y + 40;
     int mrad_h = body_h - (mrad_y - body_y) - 12;
-    fill_rect(r, right_x + 14, mrad_y, col_w - 28, mrad_h, rgba(8, 12, 18, 255));
+    fill_rect(r, right_x + 14, mrad_y, col_w - 28, mrad_h, rgba(0, 0, 0, 255));
     draw_rect(r, right_x + 14, mrad_y, col_w - 28, mrad_h, 1, rgba(50, 65, 88, 255));
     draw_text(r, "CIRCUIT RADAR", right_x + 22, mrad_y + 8, 2, neon_cyan);
     draw_track_map_geometry(r, state, right_x + 20, mrad_y + 26, col_w - 40, mrad_h - 32, 4, 2, false);
@@ -1763,7 +1884,7 @@ static void draw_icon_fuel_pump(SDL_Renderer *r, int x, int y, rgba_t col) {
 }
 
 /* High-Voltage EV Battery Icon */
-static void draw_icon_battery(SDL_Renderer *r, int x, int y, int w, int h, float pct, rgba_t col) {
+static void __attribute__((unused)) draw_icon_battery(SDL_Renderer *r, int x, int y, int w, int h, float pct, rgba_t col) {
     draw_rect(r, x, y, w, h, 2, col);
     /* Terminal nub */
     fill_rect(r, x + w, y + h / 4, 2, h / 2, col);
@@ -1847,7 +1968,7 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     }
 
     float speed = ui->use_mph ? state->speed_mph : state->speed_kmh;
-    float max_spd = ui->use_mph ? 160.0f : 260.0f;
+    float max_spd = ui->use_mph ? 160.0f : 240.0f;
     float spd_frac = speed / max_spd;
     if (spd_frac > 1.0f) spd_frac = 1.0f;
 
@@ -1875,26 +1996,33 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     float spd_deg = 135.0f + spd_frac * 270.0f;
     draw_needle_with_trail(r, left_cx, cy, 135.0f, spd_deg, dial_rad - 22, dial_rad - 6, mb_red, rgba(255, 45, 75, 180));
 
-    /* Numbers: 0, 20, 40, 60, 80, 100, 120, 140, 160 (staggered inside ticks/trail) */
-    static const int mb_spds[9] = {0, 20, 40, 60, 80, 100, 120, 140, 160};
+    /* Numbers: 0..160 mph or 0..240 km/h (matched 1:1 with needle sweep) */
+    static const int mb_spds_mph[9] = {0, 20, 40, 60, 80, 100, 120, 140, 160};
+    static const int mb_spds_kmh[9] = {0, 30, 60, 90, 120, 150, 180, 210, 240};
     for (int i = 0; i < 9; ++i) {
         float deg = 135.0f + (float)i * 33.75f;
         float rad = deg * 3.14159265f / 180.0f;
         int tx = left_cx + (int)((dial_rad - 54) * cosf(rad));
         int ty = cy + (int)((dial_rad - 54) * sinf(rad));
         char lbuf[8];
-        snprintf(lbuf, sizeof(lbuf), "%d", mb_spds[i]);
+        snprintf(lbuf, sizeof(lbuf), "%d", ui->use_mph ? mb_spds_mph[i] : mb_spds_kmh[i]);
         draw_text_centered(r, lbuf, tx, ty - 6, 2, text_wh);
     }
     draw_text_centered(r, ui->use_mph ? "mph" : "km/h", left_cx, cy - 80, 2, text_dim);
+    /* Inner Left Dial Telemetry: Boost Bar & G-Load */
+    char l_in[32];
+    snprintf(l_in, sizeof(l_in), "BOOST %+.2fB", state->turbo_bar);
+    draw_text_centered(r, l_in, left_cx, cy + 44, 1, mb_cyan);
+    snprintf(l_in, sizeof(l_in), "G-LOAD %.2fG", sqrtf(state->g_lat * state->g_lat + state->g_lon * state->g_lon));
+    draw_text_centered(r, l_in, left_cx, cy + 60, 1, text_dim);
 
     /* Dynamic Fuel Gauge at bottom of left dial */
     int fuel_y = cy + dial_rad - 56;
     int cur_range = (int)(state->fuel_pct * (ui->use_mph ? 3.8f : 6.1f));
     char f_lbl[24];
     snprintf(f_lbl, sizeof(f_lbl), "%d %s", cur_range, ui->use_mph ? "mi" : "km");
-    draw_icon_fuel_pump(r, left_cx - 42, fuel_y - 12, text_wh);
-    draw_text(r, f_lbl, left_cx - 28, fuel_y - 10, 1, text_wh);
+    draw_icon_fuel_pump(r, left_cx - 50, fuel_y - 12, text_wh);
+    draw_text(r, f_lbl, left_cx - 26, fuel_y - 10, 1, text_wh);
     draw_text(r, "0", left_cx - 48, fuel_y + 8, 1, text_dim);
     draw_text(r, "1/2", left_cx - 8, fuel_y + 14, 1, text_dim);
     draw_text(r, "1", left_cx + 36, fuel_y + 8, 1, text_dim);
@@ -1927,6 +2055,11 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
         draw_text_centered(r, lbuf, tx, ty - 6, 2, (i >= 7) ? mb_red : text_wh);
     }
     draw_text_centered(r, "x1000/min", right_cx, cy - 80, 1, text_dim);
+    /* Inner Right Dial Telemetry: Engine RPM & Coolant/Oil Temps */
+    snprintf(l_in, sizeof(l_in), "%.0f RPM", state->engine_rpm);
+    draw_text_centered(r, l_in, right_cx, cy + 44, 1, mb_cyan);
+    snprintf(l_in, sizeof(l_in), "H2O %.0fC | OIL %.0fC", state->water_temp, state->oil_temp);
+    draw_text_centered(r, l_in, right_cx, cy + 60, 1, text_dim);
 
     /* POWER & CHARGE readouts at bottom of right dial */
     int pwr_lbl_y = cy + dial_rad - 48;
@@ -1987,56 +2120,58 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     draw_text_centered(r, ui->use_mph ? "mph" : "km/h", mid_cx, top_row_y + 52, 1, text_dim);
 
     /* Steering & Lane Assist Icons */
-    draw_icon_steering_wheel(r, mid_cx + 80, top_row_y + 20, 10, mb_green);
-    draw_icon_lane_assist(r, mid_cx + 130, top_row_y + 20, text_dim);
+    draw_icon_steering_wheel(r, mid_cx + 76, top_row_y + 20, 10, mb_green);
+    draw_icon_lane_assist(r, mid_cx + 120, top_row_y + 20, text_dim);
 
-    /* Red Seatbelt Warning at top center */
-    draw_icon_seatbelt(r, mid_cx, top_row_y - 2, mb_red);
+    /* Red Seatbelt Warning cleanly positioned to the right of Lane Assist (zero overlap with speed) */
+    draw_icon_seatbelt(r, mid_cx + 162, top_row_y + 20, mb_red);
 
     /* ================= CENTER FLOATING CARD: "From Reset" / "ENTIRE" ================= */
-    int card_w = 268;
-    int card_h = 142;
+    int card_w = 272;
+    int card_h = 132;
     int card_x = mid_cx - card_w / 2;
-    int card_y = content_y + 86;
+    int card_y = content_y + 82;
 
-    draw_text_centered(r, "From Reset", mid_cx, card_y - 18, 2, text_dim);
-    draw_panel(r, card_x, card_y, card_w, card_h, rgba(8, 20, 42, 235), rgba(0, 195, 255, 220), 12);
+    draw_text_centered(r, "From Reset", mid_cx, card_y - 16, 2, text_dim);
+    draw_panel(r, card_x, card_y, card_w, card_h, rgba(0, 0, 0, 255), rgba(0, 195, 255, 220), 12);
     draw_text_centered(r, "ENTIRE", mid_cx, card_y + 8, 1, mb_cyan);
 
     char c_buf[32];
     /* Row 1: Real-time Fuel Level & Current/Top Speed */
     snprintf(c_buf, sizeof(c_buf), "%.1f L", (state->fuel_level > 0.0f) ? state->fuel_level : (state->fuel_pct * 0.65f));
-    draw_text(r, c_buf, card_x + 18, card_y + 28, 2, text_wh);
+    draw_text(r, c_buf, card_x + 18, card_y + 26, 2, text_wh);
     snprintf(c_buf, sizeof(c_buf), "%.0f %s", speed, ui->use_mph ? "mph" : "km/h");
-    draw_text(r, c_buf, card_x + 154, card_y + 28, 2, text_wh);
+    draw_text(r, c_buf, card_x + 154, card_y + 26, 2, text_wh);
 
     /* Row 2: Live Trip Distance & Lap Timer */
     float trip_dist = (float)state->current_lap * (ui->use_mph ? 2.6f : 4.2f) + ((float)state->current_lap_ms / 60000.0f) * (speed * 0.012f);
     snprintf(c_buf, sizeof(c_buf), "%.1f %s", trip_dist, ui->use_mph ? "mi" : "km");
-    draw_text(r, c_buf, card_x + 18, card_y + 64, 2, text_wh);
+    draw_text(r, c_buf, card_x + 18, card_y + 60, 2, text_wh);
     int lap_sec = (state->current_lap_ms > 0) ? (int)(state->current_lap_ms / 1000) : (int)((now_ms / 1000) % 3600);
     snprintf(c_buf, sizeof(c_buf), "%02d:%02d", lap_sec / 60, lap_sec % 60);
-    draw_text(r, c_buf, card_x + 154, card_y + 64, 2, text_wh);
+    draw_text(r, c_buf, card_x + 154, card_y + 60, 2, text_wh);
 
     /* Row 3: Remaining Dynamic Range & Race Position */
     int rem_range = (int)(state->fuel_pct * (ui->use_mph ? 3.8f : 6.1f));
     snprintf(c_buf, sizeof(c_buf), "%d %s", rem_range, ui->use_mph ? "mi" : "km");
-    draw_text(r, c_buf, card_x + 18, card_y + 100, 2, mb_cyan);
-    draw_icon_leaf(r, mid_cx, card_y + 108, mb_green);
+    draw_text(r, c_buf, card_x + 18, card_y + 94, 2, mb_cyan);
+    draw_icon_leaf(r, mid_cx, card_y + 102, mb_green);
     snprintf(c_buf, sizeof(c_buf), "POS %d/%d", (state->race_position > 0) ? state->race_position : 1, (state->total_cars > 0) ? state->total_cars : 16);
-    draw_text(r, c_buf, card_x + 154, card_y + 100, 2, text_wh);
+    draw_text(r, c_buf, card_x + 154, card_y + 94, 2, text_wh);
 
-    /* ================= CENTER BELOW CARD: Seat Occupancy Graphic & AWD Split ================= */
-    int occ_w = 236, occ_h = 24, occ_x = mid_cx - occ_w / 2, occ_y = card_y + card_h + 10;
-    draw_panel(r, occ_x, occ_y, occ_w, occ_h, rgba(8, 16, 32, 230), rgba(25, 50, 85, 255), 8);
-    draw_icon_car_topdown(r, occ_x + 55, occ_y + 12, 18, 20, rgba(40, 75, 120, 255), mb_red, false, false);
-    draw_thick_line(r, occ_x + 105, occ_y + 12, occ_x + 130, occ_y + 12, 3, mb_red);
-    fill_rect(r, occ_x + 130, occ_y + 7, 8, 10, mb_red);
+    /* ================= CENTER BELOW CARD: Seat Occupancy Graphic, AWD Split & AMG TRACK PACE ================= */
+    int occ_w = 248, occ_h = 22, occ_x = mid_cx - occ_w / 2, occ_y = card_y + card_h + 6;
+    draw_panel(r, occ_x, occ_y, occ_w, occ_h, rgba(0, 0, 0, 255), rgba(35, 70, 115, 255), 8);
+    draw_icon_car_topdown(r, occ_x + 42, occ_y + 11, 16, 18, rgba(50, 95, 145, 255), mb_red, false, false);
+    draw_thick_line(r, occ_x + 70, occ_y + 11, occ_x + 95, occ_y + 11, 3, mb_red);
+    fill_rect(r, occ_x + 95, occ_y + 6, 8, 10, mb_red);
+    snprintf(c_buf, sizeof(c_buf), "STEER %+.1fD", state->steer_angle_fl_deg);
+    draw_text_right(r, c_buf, occ_x + occ_w - 10, occ_y + 5, 1, mb_cyan);
 
-    int bot_card_y = occ_y + occ_h + 8;
-    draw_panel(r, mid_cx - 130, bot_card_y, 260, 48, rgba(6, 14, 26, 230), rgba(25, 50, 85, 255), 8);
+    int bot_card_y = occ_y + occ_h + 6;
+    draw_panel(r, mid_cx - 136, bot_card_y, 272, 46, rgba(0, 0, 0, 255), rgba(35, 70, 115, 255), 8);
     char awd_buf[64];
-    snprintf(awd_buf, sizeof(awd_buf), "4MATIC AWD: F %d%% | R %d%%",
+    snprintf(awd_buf, sizeof(awd_buf), "4MATIC: F %d%% | R %d%%",
              (state->torque_vector_nm[0] > 0.1f || state->torque_vector_nm[2] > 0.1f) ?
              (int)(100.0f * (state->torque_vector_nm[0] + state->torque_vector_nm[1]) / (state->torque_vector_nm[0] + state->torque_vector_nm[1] + state->torque_vector_nm[2] + state->torque_vector_nm[3] + 0.1f)) : 46,
              (state->torque_vector_nm[0] > 0.1f || state->torque_vector_nm[2] > 0.1f) ?
@@ -2051,6 +2186,32 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
              state->tire_temp[0], sc_fl, state->tire_temp[1], sc_fr,
              state->tire_temp[2], sc_rl, state->tire_temp[3], sc_rr);
     draw_text_centered(r, awd_buf, mid_cx, bot_card_y + 28, 1, text_wh);
+
+    /* AMG TRACK PACE Lap Delta & Pedal Telemetry Card (fills lower-center space on True OLED Black) */
+    int pace_y = bot_card_y + 52;
+    draw_panel(r, mid_cx - 136, pace_y, 272, 68, rgba(0, 0, 0, 255), rgba(0, 165, 235, 190), 8);
+    draw_text(r, "AMG TRACK PACE", mid_cx - 124, pace_y + 6, 1, mb_cyan);
+    snprintf(c_buf, sizeof(c_buf), "%s%.3fs", (state->delta_ms <= 0) ? "-" : "+", fabsf((float)state->delta_ms / 1000.0f));
+    draw_text_right(r, c_buf, mid_cx + 124, pace_y + 6, 1, (state->delta_ms <= 0) ? mb_green : mb_red);
+
+    char best_b[24], s_b[64];
+    format_lap_time(state->best_lap_ms, best_b, sizeof(best_b));
+    snprintf(s_b, sizeof(s_b), "BEST %s  |  S%d ACTIVE", best_b, state->current_sector + 1);
+    draw_text_centered(r, s_b, mid_cx, pace_y + 22, 1, text_wh);
+
+    /* Dual THR / BRK bars inside AMG Track Pace card */
+    draw_text(r, "THR", mid_cx - 124, pace_y + 39, 1, mb_green);
+    fill_rect(r, mid_cx - 94, pace_y + 40, 88, 7, rgba(16, 26, 38, 255));
+    fill_rect(r, mid_cx - 94, pace_y + 40, (int)(88.0f * state->throttle_pct / 100.0f), 7, mb_green);
+
+    draw_text(r, "BRK", mid_cx + 6, pace_y + 39, 1, mb_red);
+    fill_rect(r, mid_cx + 36, pace_y + 40, 88, 7, rgba(28, 16, 22, 255));
+    fill_rect(r, mid_cx + 36, pace_y + 40, (int)(88.0f * state->brake_pct / 100.0f), 7, mb_red);
+
+    snprintf(s_b, sizeof(s_b), "SUSP %.0f/%.0f/%.0f/%.0fMM  RH %.0fMM",
+             state->susp_height[0], state->susp_height[1],
+             state->susp_height[2], state->susp_height[3], state->body_height);
+    draw_text_centered(r, s_b, mid_cx, pace_y + 52, 1, text_dim);
 
     int status_y = content_y + content_h - 22;
     draw_text(r, "01:58 pm", 355, status_y, 2, text_dim);
@@ -2069,356 +2230,1031 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
 }
 
 /* 2. BMW CURVED DISPLAY OS 8.5/9 (Symmetrical Dual Chevrons, Full-Width 3D Nav Map) */
+
+/* --- LUXURY OEM VECTOR ICONS (BMW OS 8.5 & VOLVO EX90) --- */
+static void draw_vector_fuel_pump(SDL_Renderer *r, int x, int y, int h, rgba_t c) {
+    int w = (h * 7) / 10;
+    draw_rect(r, x, y, w, h, 1, c);
+    fill_rect(r, x + 2, y + 2, w - 4, h / 3, c);
+    fill_rect(r, x - 1, y + h - 2, w + 2, 2, c);
+    /* Hose */
+    draw_thick_line(r, x + w, y + 3, x + w + 3, y + 3, 1, c);
+    draw_thick_line(r, x + w + 3, y + 3, x + w + 3, y + h - 3, 1, c);
+    draw_thick_line(r, x + w + 3, y + h - 3, x + w + 1, y + h - 4, 1, c);
+}
+
+static void draw_vector_battery(SDL_Renderer *r, int x, int y, int w, int h, int fill_pct, rgba_t border_col, rgba_t fill_col) {
+    draw_rect(r, x, y, w, h, 1, border_col);
+    fill_rect(r, x + w, y + h / 4, 2, h / 2, border_col);
+    int inner_w = w - 4;
+    int cur_w = (inner_w * fill_pct) / 100;
+    if (cur_w > inner_w) cur_w = inner_w;
+    if (cur_w > 0) {
+        fill_rect(r, x + 2, y + 2, cur_w, h - 4, fill_col);
+    }
+}
+
+static void draw_topdown_car(SDL_Renderer *r, int cx, int cy, rgba_t c) {
+    draw_rect(r, cx - 7, cy - 12, 14, 24, 1, c);
+    draw_rect(r, cx - 5, cy - 5, 10, 10, 1, c);
+    draw_thick_line(r, cx - 5, cy - 5, cx + 5, cy - 5, 1, c);
+    fill_rect(r, cx - 9, cy - 10, 2, 5, c);
+    fill_rect(r, cx + 7, cy - 10, 2, 5, c);
+    fill_rect(r, cx - 9, cy + 5, 2, 5, c);
+    fill_rect(r, cx + 7, cy + 5, 2, 5, c);
+}
+
+static void draw_dashed_progress_bar(SDL_Renderer *r, int x, int y, int segments, int filled_segs, int seg_w, int seg_h, int gap, rgba_t fill_col, rgba_t empty_col) {
+    for (int i = 0; i < segments; i++) {
+        rgba_t col = (i < filled_segs) ? fill_col : empty_col;
+        fill_rect(r, x + i * (seg_w + gap), y, seg_w, seg_h, col);
+    }
+}
+
+/* Authentic Electric Vehicle Charging Plug Vector Icon (BMW i / M-EV) */
+static void draw_icon_ev_plug(SDL_Renderer *r, int cx, int cy, rgba_t col) {
+    /* Two prongs */
+    draw_line(r, cx - 3, cy - 6, cx - 3, cy - 2, col);
+    draw_line(r, cx + 1, cy - 6, cx + 1, cy - 2, col);
+    /* Body */
+    draw_rect(r, cx - 5, cy - 2, 8, 7, 1, col);
+    fill_rect(r, cx - 4, cy - 1, 6, 5, col);
+    /* Cable */
+    draw_line(r, cx - 1, cy + 5, cx - 1, cy + 9, col);
+}
+
+/* Official BMW ///M Tri-Color Emblem */
+static void draw_bmw_m_logo(SDL_Renderer *r, int cx, int cy) {
+    rgba_t col_light_blue = rgba(0, 163, 224, 255);
+    rgba_t col_dark_blue  = rgba(0, 43, 110, 255);
+    rgba_t col_red        = rgba(230, 26, 35, 255);
+    rgba_t col_white      = rgba(245, 250, 255, 255);
+
+    int sx = cx - 30;
+    int sy = cy - 8;
+    int h = 18;
+    for (int dy = 0; dy < h; dy++) {
+        int x_off = (h - dy) / 3;
+        fill_rect(r, sx + x_off, sy + dy, 6, 1, col_light_blue);
+        fill_rect(r, sx + x_off + 8, sy + dy, 6, 1, col_dark_blue);
+        fill_rect(r, sx + x_off + 16, sy + dy, 7, 1, col_red);
+    }
+    draw_modern_char(r, 'M', sx + 28, sy - 2, 18, 22, 3, col_white);
+}
+
+/* 3D Perspective BMW Vehicle Rendering in Lane (Assisted Driving Highway View) */
+static void draw_bmw_3d_car(SDL_Renderer *r, int cx, int cy) {
+    /* Shadow underneath tires */
+    fill_rect(r, cx - 64, cy + 22, 128, 6, rgba(0, 0, 0, 160));
+    fill_rect(r, cx - 54, cy + 24, 108, 4, rgba(0, 0, 0, 180));
+
+    /* Lower chassis / door panel with metallic gradient */
+    draw_panel(r, cx - 60, cy - 6, 120, 26, rgba(235, 240, 250, 255), rgba(175, 190, 210, 255), 4);
+    fill_rect(r, cx - 58, cy + 8, 116, 8, rgba(215, 222, 235, 255));
+    /* Aerodynamic rocker skirt */
+    fill_rect(r, cx - 54, cy + 18, 108, 3, rgba(40, 50, 65, 255));
+
+    /* Roof greenhouse & pillars */
+    draw_panel(r, cx - 36, cy - 25, 76, 21, rgba(20, 26, 38, 255), rgba(160, 180, 205, 255), 6);
+    /* Tinted Windows glass */
+    fill_rect(r, cx - 31, cy - 21, 33, 14, rgba(45, 75, 110, 230));
+    fill_rect(r, cx + 6,  cy - 21, 30, 14, rgba(45, 75, 110, 230));
+    /* B-pillar separator */
+    fill_rect(r, cx + 3,  cy - 21, 3, 14, rgba(25, 30, 42, 255));
+
+    /* Hood and trunk slope bevels */
+    draw_thick_line(r, cx - 60, cy - 6, cx - 36, cy - 21, 2, rgba(245, 250, 255, 255));
+    draw_thick_line(r, cx + 60, cy - 4, cx + 41, cy - 21, 2, rgba(245, 250, 255, 255));
+
+    /* Front LED Laser Headlight & Rear LED L-Shape Taillight */
+    fill_rect(r, cx + 56, cy - 2, 5, 5, rgba(0, 230, 255, 255));
+    fill_circle(r, cx + 58, cy, 3, rgba(0, 210, 255, 160));
+    fill_rect(r, cx - 60, cy - 2, 4, 5, rgba(255, 35, 35, 255));
+    fill_circle(r, cx - 59, cy, 3, rgba(255, 35, 35, 160));
+
+    /* Front wheel & Rear wheel (BMW M Style multi-spoke alloy) */
+    fill_circle(r, cx - 36, cy + 18, 11, rgba(16, 20, 28, 255));
+    draw_circle(r, cx - 36, cy + 18, 11, 2, rgba(170, 185, 205, 255));
+    fill_circle(r, cx - 36, cy + 18, 4, rgba(210, 225, 245, 255));
+
+    fill_circle(r, cx + 36, cy + 18, 11, rgba(16, 20, 28, 255));
+    draw_circle(r, cx + 36, cy + 18, 11, 2, rgba(170, 185, 205, 255));
+    fill_circle(r, cx + 36, cy + 18, 4, rgba(210, 225, 245, 255));
+
+    /* Distinctive BMW Hofmeister kink & shoulder character line */
+    draw_line(r, cx - 54, cy + 4, cx + 54, cy + 4, rgba(160, 185, 215, 255));
+    draw_line(r, cx + 37, cy - 14, cx + 42, cy - 8, rgba(235, 240, 250, 255));
+}
+
+/* =========================================================================
+ * 2. BMW CURVED DISPLAY OS 8.5/9 (MULTI-STYLE SUITE: M DYNAMIC, 3D MAP, RADAR, REDUCED)
+ * Directly matching production photos 1, 2, 3, 4, and 5 with authentic geometry,
+ * isometric triangle mesh, dual stacked speed (mph/kmh), CraftedClarity crystal facets,
+ * and comprehensive Gran Turismo 7 motorsport telemetry integration.
+ * ========================================================================= */
 static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud_ui_state_t *ui, uint32_t now_ms, int content_y, int content_h) {
     (void)now_ms;
-    rgba_t bmw_cyan  = rgba(0, 225, 255, 255);
-    rgba_t text_dim  = rgba(140, 160, 185, 255);
-    rgba_t text_wh   = rgba(245, 250, 255, 255);
-    rgba_t bmw_green = rgba(40, 225, 120, 255);
+    rgba_t bmw_cyan      = rgba(0, 220, 255, 255);
+    rgba_t text_dim      = rgba(135, 155, 180, 255);
+    rgba_t text_wh       = rgba(245, 250, 255, 255);
+    rgba_t chevron_outer = rgba(255, 255, 255, 255);
+    rgba_t m_blue        = rgba(0, 163, 224, 255);
+    rgba_t m_dark_blue   = rgba(0, 43, 110, 255);
+    rgba_t m_red         = rgba(230, 26, 35, 255);
+    rgba_t gold          = rgba(245, 190, 40, 255);
 
-    float speed = ui->use_mph ? state->speed_mph : state->speed_kmh;
-    float max_spd = ui->use_mph ? 160.0f : 260.0f;
-    float spd_frac = speed / max_spd;
-    if (spd_frac > 1.0f) spd_frac = 1.0f;
+    /* Background: True OLED Pitch Black (#000000) */
+    fill_rect(r, 0, content_y, 1280, content_h, rgba(0, 0, 0, 255));
 
-    float power_pct = state->throttle_pct;
-    float charge_pct = state->brake_pct;
-    float pwr_frac = (charge_pct > 2.0f) ? (charge_pct / 100.0f) : (power_pct / 100.0f);
-    if (pwr_frac > 1.0f) pwr_frac = 1.0f;
-
-    int cy = content_y + content_h / 2;
-
-    /* ================= 100% FULL-WIDTH 3D NAVIGATION STREET GRID BACKGROUND ================= */
-    int map_x = 0;
-    int map_w = SCREEN_W;
-    int map_y = content_y;
-    int map_h = content_h - 38;
-
-    /* Dark 3D Perspective Road Grid / Circuit Map */
-    fill_rect(r, map_x, map_y, map_w, map_h, rgba(5, 14, 28, 255));
-
-    /* Perspective diagonal road lines radiating across full width */
-    for (int gx = -120; gx <= SCREEN_W + 120; gx += 55) {
-        int target_x = SCREEN_W / 2 + (gx - SCREEN_W / 2) / 4;
-        draw_line(r, gx, map_y + map_h, target_x, map_y + 15, rgba(16, 40, 78, 255));
-    }
-    /* Perspective horizontal cross roads with quadratic compression */
-    for (int gy = 0; gy < 8; ++gy) {
-        float f = (float)gy / 7.0f;
-        int py = map_y + map_h - (int)(powf(f, 1.4f) * (map_h - 18));
-        draw_line(r, 0, py, SCREEN_W, py, rgba(20, 48, 92, 255));
-    }
-
-    /* Angled city street network */
-    draw_thick_line(r, 60, map_y + 140, 420, map_y + 35, 2, rgba(25, 58, 115, 255));
-    draw_thick_line(r, 120, map_y + map_h - 30, 520, map_y + 80, 2, rgba(25, 58, 115, 255));
-    draw_thick_line(r, SCREEN_W - 60, map_y + 130, SCREEN_W - 420, map_y + 45, 2, rgba(25, 58, 115, 255));
-    draw_thick_line(r, SCREEN_W - 120, map_y + map_h - 40, SCREEN_W - 510, map_y + 90, 2, rgba(25, 58, 115, 255));
-
-    /* White/cyan navigation route line */
-    draw_thick_line(r, SCREEN_W / 2 + 10, map_y + map_h, SCREEN_W / 2 - 30, map_y + map_h / 2, 4, rgba(230, 245, 255, 240));
-    draw_thick_line(r, SCREEN_W / 2 - 30, map_y + map_h / 2, SCREEN_W / 2 + 120, map_y + 35, 4, rgba(230, 245, 255, 240));
-
-    /* Destination waypoint pin */
-    draw_rect(r, SCREEN_W / 2 + 112, map_y + 20, 16, 16, 2, text_wh);
-    fill_rect(r, SCREEN_W / 2 + 116, map_y + 24, 8, 8, text_wh);
-
-    /* BMW Driver Attention Camera Trapezoid Notch at top center */
-    fill_rect(r, SCREEN_W / 2 - 50, map_y, 100, 16, rgba(0, 0, 0, 255));
-    draw_thick_line(r, SCREEN_W / 2 - 60, map_y, SCREEN_W / 2 - 45, map_y + 16, 2, rgba(20, 30, 45, 255));
-    draw_thick_line(r, SCREEN_W / 2 + 60, map_y, SCREEN_W / 2 + 45, map_y + 16, 2, rgba(20, 30, 45, 255));
-    draw_line(r, SCREEN_W / 2 - 45, map_y + 16, SCREEN_W / 2 + 45, map_y + 16, rgba(20, 30, 45, 255));
-
-    /* Actual GT7 Real-time Track Map Overlay (cleanly contained in central corridor) */
-    draw_track_map_geometry(r, state, 470, map_y + 35, SCREEN_W - 940, map_h - 70, 3, 2, false);
-
-    /* Center Navigation Position Triangle Cursor */
-    int nav_cx = SCREEN_W / 2;
-    int nav_cy = map_y + map_h - 40;
-    draw_thick_line(r, nav_cx, nav_cy - 12, nav_cx - 9, nav_cy + 9, 3, bmw_cyan);
-    draw_thick_line(r, nav_cx, nav_cy - 12, nav_cx + 9, nav_cy + 9, 3, bmw_cyan);
-    draw_thick_line(r, nav_cx - 9, nav_cy + 9, nav_cx, nav_cy + 4, 2, bmw_cyan);
-    draw_thick_line(r, nav_cx + 9, nav_cy + 9, nav_cx, nav_cy + 4, 2, bmw_cyan);
-
-    /* ================= LEFT CHEVRON: SPEEDOMETER BRACKET (<) ================= */
-    /* Outer 3-Segment Coordinates (top slant, vertical flank, bottom slant) */
-    int l_top_x = 390, l_top_y = content_y + 35;
-    int l_v_top_x = 220, l_v_top_y = cy - 70;
-    int l_v_bot_x = 220, l_v_bot_y = cy + 70;
-    int l_bot_x = 420, l_bot_y = content_y + content_h - 60;
-
-    /* Inner 3-Segment Coordinates */
-    int l_in_top_x = 355, l_in_top_y = content_y + 55;
-    int l_in_v_top_x = 265, l_in_v_top_y = cy - 60;
-    int l_in_v_bot_x = 265, l_in_v_bot_y = cy + 60;
-    int l_in_bot_x = 390, l_in_bot_y = content_y + content_h - 80;
-
-    /* Frosted glass backing inside left chevron */
-    for (int step = 0; step < 8; ++step) {
-        float t = (float)step / 7.0f;
-        int sx1 = l_top_x - (int)(t * 35), sy1 = l_top_y + (int)(t * 20);
-        int sx2 = l_v_top_x + (int)(t * 45), sy2 = l_v_top_y + (int)(t * 10);
-        int sx3 = l_v_bot_x + (int)(t * 45), sy3 = l_v_bot_y - (int)(t * 10);
-        int sx4 = l_bot_x - (int)(t * 30), sy4 = l_bot_y - (int)(t * 20);
-        rgba_t band_col = rgba(0, (uint8_t)(60 + t * 110), (uint8_t)(140 + t * 90), (uint8_t)(30 + t * 160));
-        draw_thick_line(r, sx1, sy1, sx2, sy2, 3, band_col);
-        draw_thick_line(r, sx2, sy2, sx3, sy3, 3, band_col);
-        draw_thick_line(r, sx3, sy3, sx4, sy4, 3, band_col);
-    }
-
-    /* Outer crisp border of left chevron */
-    draw_thick_line(r, l_top_x, l_top_y, l_v_top_x, l_v_top_y, 4, bmw_cyan);
-    draw_thick_line(r, l_v_top_x, l_v_top_y, l_v_bot_x, l_v_bot_y, 4, bmw_cyan);
-    draw_thick_line(r, l_v_bot_x, l_v_bot_y, l_bot_x, l_bot_y, 4, bmw_cyan);
-
-    /* Inner border */
-    draw_thick_line(r, l_in_top_x, l_in_top_y, l_in_v_top_x, l_in_v_top_y, 2, rgba(0, 140, 255, 140));
-    draw_thick_line(r, l_in_v_top_x, l_in_v_top_y, l_in_v_bot_x, l_in_v_bot_y, 2, rgba(0, 140, 255, 140));
-    draw_thick_line(r, l_in_v_bot_x, l_in_v_bot_y, l_in_bot_x, l_in_bot_y, 2, rgba(0, 140, 255, 140));
-
-    /* Top chevron cap bar & "km/h" label */
-    draw_thick_line(r, l_in_top_x, l_in_top_y, l_top_x, l_top_y, 3, text_wh);
-    draw_text_centered(r, ui->use_mph ? "mph" : "km/h", (l_in_top_x + l_top_x) / 2, l_top_y - 26, 2, text_wh);
-
-    /* Graduation marks: 0, 30, 60, 90, 120 */
-    draw_thick_line(r, l_bot_x - 12, l_bot_y, l_bot_x + 4, l_bot_y, 3, bmw_cyan);
-    draw_text_right(r, "0", l_bot_x - 16, l_bot_y - 6, 2, text_wh);
-
-    draw_thick_line(r, l_v_bot_x - 12, l_v_bot_y, l_v_bot_x + 4, l_v_bot_y, 3, bmw_cyan);
-    draw_text_right(r, "30", l_v_bot_x - 16, l_v_bot_y - 6, 2, text_wh);
-
-    draw_thick_line(r, l_v_top_x - 12, cy, l_v_top_x + 4, cy, 3, bmw_cyan);
-    draw_text_right(r, "60", l_v_top_x - 16, cy - 6, 2, text_wh);
-
-    draw_thick_line(r, l_v_top_x - 12, l_v_top_y, l_v_top_x + 4, l_v_top_y, 3, bmw_cyan);
-    draw_text_right(r, "90", l_v_top_x - 16, l_v_top_y - 6, 2, text_wh);
-
-    draw_thick_line(r, l_top_x - 12, l_top_y, l_top_x + 4, l_top_y, 3, bmw_cyan);
-    draw_text_right(r, "120", l_top_x - 16, l_top_y + 16, 2, text_wh);
-
-    /* Dynamic illuminated speed ribbon along left chevron */
-    if (spd_frac > 0.02f) {
-        if (spd_frac <= 0.35f) {
-            float sub = spd_frac / 0.35f;
-            int ex = l_bot_x - (int)(sub * (l_bot_x - l_v_bot_x));
-            int ey = l_bot_y - (int)(sub * (l_bot_y - l_v_bot_y));
-            draw_thick_line(r, l_bot_x, l_bot_y, ex, ey, 7, text_wh);
-        } else if (spd_frac <= 0.70f) {
-            draw_thick_line(r, l_bot_x, l_bot_y, l_v_bot_x, l_v_bot_y, 7, text_wh);
-            float sub = (spd_frac - 0.35f) / 0.35f;
-            int ey = l_v_bot_y - (int)(sub * (l_v_bot_y - l_v_top_y));
-            draw_thick_line(r, l_v_bot_x, l_v_bot_y, l_v_top_x, ey, 7, text_wh);
+    /* --- TOP SUB-MODE SELECTOR TABS (x: 410 to 870, y: content_y + 4) --- */
+    static const struct {
+        const char *name;
+        int x;
+        int w;
+        bmw_view_t view;
+    } sub_tabs[] = {
+        { "///M SPORT", 410, 105, BMW_VIEW_M_DYNAMIC },
+        { "3D MAP",    525,  95, BMW_VIEW_MAP_COCKPIT },
+        { "RADAR",     630,  95, BMW_VIEW_ASSIST_RADAR },
+        { "REDUCED",   735, 105, BMW_VIEW_MINIMAL_MAP }
+    };
+    for (size_t t = 0; t < sizeof(sub_tabs) / sizeof(sub_tabs[0]); t++) {
+        bool active = (ui->bmw_view == sub_tabs[t].view);
+        int tx = sub_tabs[t].x;
+        int ty = content_y + 4;
+        int tw = sub_tabs[t].w;
+        int th = 22;
+        if (active) {
+            fill_rect(r, tx, ty, tw, th, rgba(0, 110, 210, 180));
+            draw_rect(r, tx, ty, tw, th, 1, bmw_cyan);
+            draw_text_centered(r, sub_tabs[t].name, tx + tw / 2, ty + 4, 1, text_wh);
         } else {
-            draw_thick_line(r, l_bot_x, l_bot_y, l_v_bot_x, l_v_bot_y, 7, text_wh);
-            draw_thick_line(r, l_v_bot_x, l_v_bot_y, l_v_top_x, l_v_top_y, 7, text_wh);
-            float sub = (spd_frac - 0.70f) / 0.30f;
-            int ex = l_v_top_x + (int)(sub * (l_top_x - l_v_top_x));
-            int ey = l_v_top_y - (int)(sub * (l_v_top_y - l_top_y));
-            draw_thick_line(r, l_v_top_x, l_v_top_y, ex, ey, 7, text_wh);
+            fill_rect(r, tx, ty, tw, th, rgba(10, 18, 30, 120));
+            draw_rect(r, tx, ty, tw, th, 1, rgba(40, 70, 105, 100));
+            draw_text_centered(r, sub_tabs[t].name, tx + tw / 2, ty + 4, 1, text_dim);
         }
     }
 
-    /* Huge Modern Vector Digital Speed in crook of left chevron */
-    int ispd = (int)roundf(speed);
-    draw_modern_number_centered(r, ispd, 1, false, 370, cy - 36, 36, 58, 7, 7, text_wh);
-    draw_text_centered(r, ui->use_mph ? "mph" : "km/h", 370, cy + 34, 2, text_wh);
+    /* Common speed variables */
+    int spd_pri = ui->use_mph ? (int)(state->speed_mph + 0.5f) : (int)(state->speed_kmh + 0.5f);
+    int spd_sec = ui->use_mph ? (int)(state->speed_kmh + 0.5f) : (int)(state->speed_mph + 0.5f);
+    if (spd_pri < 0) spd_pri = 0;
+    if (spd_sec < 0) spd_sec = 0;
 
-    /* Left Green Headlight Indicator Icon */
-    draw_icon_headlight(r, 65, cy + 20, bmw_green);
-
-    /* Translucent BMW M Left Tyres & Steering Widget */
-    fill_rect(r, 24, cy - 100, 140, 68, rgba(6, 14, 26, 185));
-    draw_rect(r, 24, cy - 100, 140, 68, 1, rgba(25, 50, 85, 200));
-    draw_text(r, "TYRES (LEFT)", 32, cy - 94, 1, text_dim);
-    char bmw_tbuf[32];
-    char sc_fl = (state->surface_type[0] != 0) ? (char)state->surface_type[0] : 'T';
-    snprintf(bmw_tbuf, sizeof(bmw_tbuf), "FL %.0f°[%c] RL %.0f°", state->tire_temp[0], sc_fl, state->tire_temp[2]);
-    draw_text(r, bmw_tbuf, 32, cy - 76, 1, tire_temp_color(state->tire_temp[0]));
-    snprintf(bmw_tbuf, sizeof(bmw_tbuf), "STEER: %+.1f°", state->steer_angle_fl_deg);
-    draw_text(r, bmw_tbuf, 32, cy - 56, 1, bmw_cyan);
-
-    /* ================= RIGHT CHEVRON: POWER & ADAPTIVE BRACKET (>) ================= */
-    /* Outer Symmetrical Chevron Coordinates */
-    int r_top_x = SCREEN_W - l_top_x;
-    int r_v_top_x = SCREEN_W - l_v_top_x;
-    int r_v_bot_x = SCREEN_W - l_v_bot_x;
-    int r_bot_x = SCREEN_W - l_bot_x;
-
-    /* Inner Symmetrical Chevron Coordinates */
-    int r_in_top_x = SCREEN_W - l_in_top_x;
-    int r_in_v_top_x = SCREEN_W - l_in_v_top_x;
-    int r_in_v_bot_x = SCREEN_W - l_in_v_bot_x;
-    int r_in_bot_x = SCREEN_W - l_in_bot_x;
-
-    /* Frosted glass backing inside right chevron */
-    for (int step = 0; step < 8; ++step) {
-        float t = (float)step / 7.0f;
-        int sx1 = r_top_x + (int)(t * 35), sy1 = l_top_y + (int)(t * 20);
-        int sx2 = r_v_top_x - (int)(t * 45), sy2 = l_v_top_y + (int)(t * 10);
-        int sx3 = r_v_bot_x - (int)(t * 45), sy3 = l_v_bot_y - (int)(t * 10);
-        int sx4 = r_bot_x + (int)(t * 30), sy4 = l_bot_y - (int)(t * 20);
-        rgba_t band_col = rgba(0, (uint8_t)(60 + t * 110), (uint8_t)(140 + t * 90), (uint8_t)(30 + t * 160));
-        draw_thick_line(r, sx1, sy1, sx2, sy2, 3, band_col);
-        draw_thick_line(r, sx2, sy2, sx3, sy3, 3, band_col);
-        draw_thick_line(r, sx3, sy3, sx4, sy4, 3, band_col);
+    /* Common gear letter */
+    char gear_ch = 'D';
+    if (state->speed_kmh < 0.2f && state->throttle_pct < 0.05f) {
+        gear_ch = 'P';
+    } else if (state->current_gear == -1) {
+        gear_ch = 'N';
+    } else if (state->current_gear == 0) {
+        gear_ch = 'R';
+    } else if (state->current_gear > 0 && state->current_gear <= 9) {
+        gear_ch = '0' + state->current_gear;
     }
 
-    /* Outer crisp border of right chevron */
-    draw_thick_line(r, r_top_x, l_top_y, r_v_top_x, l_v_top_y, 4, bmw_cyan);
-    draw_thick_line(r, r_v_top_x, l_v_top_y, r_v_bot_x, l_v_bot_y, 4, bmw_cyan);
-    draw_thick_line(r, r_v_bot_x, l_v_bot_y, r_bot_x, l_bot_y, 4, bmw_cyan);
+    /* Common session trip distance */
+    float trip_km = (state->current_lap > 0) ? (state->current_lap * 5.807f + state->speed_kmh * 0.02f) : 1503.7f;
+    char trip_str[32];
+    snprintf(trip_str, sizeof(trip_str), "%.1f km", trip_km);
 
-    /* Inner border */
-    draw_thick_line(r, r_in_top_x, l_in_top_y, r_in_v_top_x, l_in_v_top_y, 2, rgba(0, 140, 255, 140));
-    draw_thick_line(r, r_in_v_top_x, l_in_v_top_y, r_in_v_bot_x, l_in_v_bot_y, 2, rgba(0, 140, 255, 140));
-    draw_thick_line(r, r_in_v_bot_x, l_in_v_bot_y, r_in_bot_x, l_in_bot_y, 2, rgba(0, 140, 255, 140));
+    /* =========================================================================
+     * VIEW 1: BMW ///M DYNAMIC / SPORT COCKPIT (Photos 1 & 2)
+     * Dual Symmetrical Chevrons, Central 3D Isometric Triangular Wireframe Grid,
+     * Top ///M Logo, Center Stacked Speed (mph over km/h), Dynamic Red/Cyan Neon Wedges,
+     * Lower Center Gear, and Rich Motorsport Telemetry across open flanks.
+     * ========================================================================= */
+    if (ui->bmw_view == BMW_VIEW_M_DYNAMIC) {
+        int top_y = content_y + 40;
+        int bot_y = content_y + content_h - 55;
+        int mid_y_top = content_y + 195;
+        int mid_y_bot = content_y + 265;
 
-    /* Top chevron cap bar & "Power %" label */
-    draw_thick_line(r, r_top_x, l_top_y, r_in_top_x, l_in_top_y, 3, text_wh);
-    draw_text_centered(r, "Power %", (r_top_x + r_in_top_x) / 2, l_top_y - 26, 2, text_wh);
+        /* Authentic chevron geometry matching Photo 1 */
+        int l_elb_x = 240;
+        int l_roof_x1 = 375, l_roof_x2 = 430;
+        int l_floor_x1 = 375, l_floor_x2 = 430;
 
-    /* Graduation marks: READY 0, 25, 50, 100 */
-    draw_thick_line(r, r_bot_x - 4, l_bot_y, r_bot_x + 12, l_bot_y, 3, bmw_cyan);
-    draw_text(r, "READY 0", r_bot_x + 16, l_bot_y - 6, 2, text_wh);
+        int r_elb_x = 1280 - 240; /* 1040 */
+        int r_roof_x1 = 1280 - 375, r_roof_x2 = 1280 - 430; /* 905 to 850 */
+        int r_floor_x1 = 1280 - 375, r_floor_x2 = 1280 - 430; /* 905 to 850 */
 
-    draw_thick_line(r, r_v_bot_x - 4, l_v_bot_y, r_v_bot_x + 12, l_v_bot_y, 3, bmw_cyan);
-    draw_text(r, "25", r_v_bot_x + 16, l_v_bot_y - 6, 2, text_wh);
+        /* 1. CENTRAL ISOMETRIC TRIANGULAR WIREFRAME LATTICE GRID (between chevrons) */
+        int grid_x1 = 435, grid_x2 = 845;
+        int grid_y1 = content_y + 45, grid_y2 = content_y + 475;
+        int tri_h = 28, tri_w = 32;
+        rgba_t grid_col = rgba(0, 110, 210, 75);
+        rgba_t node_col = rgba(0, 190, 255, 120);
 
-    draw_thick_line(r, r_v_top_x - 4, l_v_top_y, r_v_top_x + 12, l_v_top_y, 3, bmw_cyan);
-    draw_text(r, "50", r_v_top_x + 16, l_v_top_y - 6, 2, text_wh);
-
-    draw_thick_line(r, r_top_x - 4, l_top_y, r_top_x + 12, l_top_y, 3, bmw_cyan);
-    draw_text(r, "100", r_top_x + 16, l_top_y + 16, 2, text_wh);
-
-    /* Dynamic illuminated power ribbon along right chevron */
-    if (pwr_frac > 0.02f) {
-        if (pwr_frac <= 0.35f) {
-            float sub = pwr_frac / 0.35f;
-            int ex = r_bot_x + (int)(sub * (r_v_bot_x - r_bot_x));
-            int ey = l_bot_y - (int)(sub * (l_bot_y - l_v_bot_y));
-            draw_thick_line(r, r_bot_x, l_bot_y, ex, ey, 7, (charge_pct > 2.0f) ? bmw_green : text_wh);
-        } else if (pwr_frac <= 0.70f) {
-            draw_thick_line(r, r_bot_x, l_bot_y, r_v_bot_x, l_v_bot_y, 7, text_wh);
-            float sub = (pwr_frac - 0.35f) / 0.35f;
-            int ey = l_v_bot_y - (int)(sub * (l_v_bot_y - l_v_top_y));
-            draw_thick_line(r, r_v_bot_x, l_v_bot_y, r_v_top_x, ey, 7, text_wh);
-        } else {
-            draw_thick_line(r, r_bot_x, l_bot_y, r_v_bot_x, l_v_bot_y, 7, text_wh);
-            draw_thick_line(r, r_v_bot_x, l_v_bot_y, r_v_top_x, l_v_top_y, 7, text_wh);
-            float sub = (pwr_frac - 0.70f) / 0.30f;
-            int ex = r_v_top_x - (int)(sub * (r_v_top_x - r_top_x));
-            int ey = l_v_top_y - (int)(sub * (l_v_top_y - l_top_y));
-            draw_thick_line(r, r_v_top_x, l_v_top_y, ex, ey, 7, text_wh);
+        for (int gy = grid_y1; gy <= grid_y2; gy += tri_h) {
+            draw_thick_line(r, grid_x1, gy, grid_x2, gy, 1, grid_col);
         }
+        for (int gx = grid_x1 - 160; gx <= grid_x2 + 160; gx += tri_w) {
+            int dx_diag = (grid_y2 - grid_y1) * tri_w / (2 * tri_h);
+            draw_thick_line(r, gx, grid_y1, gx + dx_diag, grid_y2, 1, grid_col);
+            draw_thick_line(r, gx, grid_y1, gx - dx_diag, grid_y2, 1, grid_col);
+        }
+        for (int row = 0; row <= (grid_y2 - grid_y1) / tri_h; row++) {
+            int gy = grid_y1 + row * tri_h;
+            int x_off = (row % 2 == 0) ? 0 : tri_w / 2;
+            for (int gx = grid_x1 + x_off; gx <= grid_x2; gx += tri_w) {
+                fill_circle(r, gx, gy, 1, node_col);
+            }
+        }
+
+        /* 2. CRAFTED-CLARITY CRYSTAL GLASS BLADE (Inside Left & Right Chevrons) */
+        rgba_t blade_glass = rgba(10, 24, 52, 160);
+        rgba_t crystal_line = rgba(0, 190, 255, 45);
+
+        /* Left Chevron interior crystal glass fill */
+        for (int y = top_y; y <= bot_y; y++) {
+            int ox, ix;
+            if (y < mid_y_top) {
+                ox = l_elb_x + (mid_y_top - y) * (l_roof_x1 - l_elb_x) / (mid_y_top - top_y);
+                ix = ox + 46;
+            } else if (y <= mid_y_bot) {
+                ox = l_elb_x;
+                ix = ox + 46;
+            } else {
+                ox = l_elb_x + (y - mid_y_bot) * (l_floor_x1 - l_elb_x) / (bot_y - mid_y_bot);
+                ix = ox + 46;
+            }
+            fill_rect(r, ox, y, ix - ox, 1, blade_glass);
+            if ((y - content_y) % 18 == 0) {
+                draw_line(r, ox, y, ix, y, crystal_line);
+            }
+        }
+
+        /* Right Chevron interior crystal glass fill */
+        for (int y = top_y; y <= bot_y; y++) {
+            int ox, ix;
+            if (y < mid_y_top) {
+                ox = r_elb_x - (mid_y_top - y) * (r_elb_x - r_roof_x1) / (mid_y_top - top_y);
+                ix = ox - 46;
+            } else if (y <= mid_y_bot) {
+                ox = r_elb_x;
+                ix = ox - 46;
+            } else {
+                ox = r_elb_x - (y - mid_y_bot) * (r_elb_x - r_floor_x1) / (bot_y - mid_y_bot);
+                ix = ox - 46;
+            }
+            fill_rect(r, ix, y, ox - ix, 1, blade_glass);
+            if ((y - content_y) % 18 == 0) {
+                draw_line(r, ix, y, ox, y, crystal_line);
+            }
+        }
+
+        /* 3. DYNAMIC RADIANT NEON WEDGES (Fiery Red-Orange in Dynamic / Cyan in Eco) */
+        bool is_dynamic_flare = (state->throttle_pct > 25.0f || state->turbo_bar > 0.0f || state->engine_rpm > 4000 || state->speed_kmh > 70.0f);
+        for (int offset = 10; offset <= 48; offset += 2) {
+            float t = (float)(offset - 10) / 38.0f;
+            int a = (int)((1.0f - t * t) * (is_dynamic_flare ? 220.0f : 175.0f));
+            if (a < 12) a = 12;
+            rgba_t w_col;
+            if (is_dynamic_flare) {
+                if (offset <= 18) w_col = rgba(255, 225, 195, a);
+                else if (offset <= 32) w_col = rgba(255, 55, 30, a);
+                else w_col = rgba(195, 15, 25, (uint8_t)(a * 0.7f));
+            } else {
+                if (offset <= 18) w_col = rgba(225, 245, 255, a);
+                else if (offset <= 32) w_col = rgba(0, 215, 255, a);
+                else w_col = rgba(0, 85, 215, (uint8_t)(a * 0.7f));
+            }
+            /* Inner lower diagonal wedge */
+            draw_thick_line(r, l_elb_x + offset, mid_y_bot, l_floor_x1 + offset, bot_y, 2, w_col);
+            draw_thick_line(r, r_elb_x - offset, mid_y_bot, r_floor_x1 - offset, bot_y, 2, w_col);
+            /* Inner upper diagonal wedge */
+            draw_thick_line(r, l_elb_x + offset, mid_y_top, l_roof_x1 + offset, top_y, 2, w_col);
+            draw_thick_line(r, r_elb_x - offset, mid_y_top, r_roof_x1 - offset, top_y, 2, w_col);
+        }
+
+        /* 4. BRILLIANT WHITE METALLIC OUTER BEZEL LINES */
+        draw_thick_line(r, l_elb_x, mid_y_top, l_elb_x, mid_y_bot, 2, chevron_outer);
+        draw_thick_line(r, l_elb_x, mid_y_top, l_roof_x1, top_y, 2, chevron_outer);
+        draw_thick_line(r, l_roof_x1, top_y, l_roof_x2, top_y, 2, chevron_outer);
+        draw_thick_line(r, l_elb_x, mid_y_bot, l_floor_x1, bot_y, 2, chevron_outer);
+        draw_thick_line(r, l_floor_x1, bot_y, l_floor_x2, bot_y, 2, chevron_outer);
+
+        draw_thick_line(r, r_elb_x, mid_y_top, r_elb_x, mid_y_bot, 2, chevron_outer);
+        draw_thick_line(r, r_elb_x, mid_y_top, r_roof_x1, top_y, 2, chevron_outer);
+        draw_thick_line(r, r_roof_x1, top_y, r_roof_x2, top_y, 2, chevron_outer);
+        draw_thick_line(r, r_elb_x, mid_y_bot, r_floor_x1, bot_y, 2, chevron_outer);
+        draw_thick_line(r, r_floor_x1, bot_y, r_floor_x2, bot_y, 2, chevron_outer);
+
+        /* M Tri-Color Ribbon on Left Roof */
+        fill_rect(r, l_roof_x1 + 4, top_y - 3, 12, 4, m_blue);
+        fill_rect(r, l_roof_x1 + 16, top_y - 3, 12, 4, m_dark_blue);
+        fill_rect(r, l_roof_x1 + 28, top_y - 3, 12, 4, m_red);
+
+        /* Cyan/Red Ribbon on Right Roof */
+        fill_rect(r, r_roof_x2 + 4, top_y - 3, 24, 4, bmw_cyan);
+        fill_rect(r, r_roof_x2 + 28, top_y - 3, 12, 4, m_red);
+
+        /* Authentic Left Speed Scale Ticks (220, 180, 150, 120, 90, 60, 30, 0) */
+        char left_top_hdr[32];
+        snprintf(left_top_hdr, sizeof(left_top_hdr), "%d%s", ui->use_mph ? 140 : 220, ui->use_mph ? "mph" : "km/h");
+        draw_text(r, left_top_hdr, l_roof_x1 - 10, top_y - 18, 1, text_wh);
+
+        /* 180 tick at y = content_y + 80, x = 340 */
+        draw_text_right(r, ui->use_mph ? "110" : "180", 325, content_y + 76, 1, text_wh);
+        draw_thick_line(r, 330, content_y + 80, 340, content_y + 80, 2, text_wh);
+
+        /* 150 tick at y = content_y + 130, x = 296 */
+        draw_text_right(r, ui->use_mph ? "90" : "150", 281, content_y + 126, 1, text_wh);
+        draw_thick_line(r, 286, content_y + 130, 296, content_y + 130, 2, text_wh);
+
+        /* 120 tick at elbow y = content_y + 185, x = 240 */
+        draw_text_right(r, ui->use_mph ? "70" : "120", 225, content_y + 181, 1, text_wh);
+        draw_thick_line(r, 230, content_y + 185, 240, content_y + 185, 2, text_wh);
+
+        /* 90 tick at lower diagonal y = content_y + 280, x = 250 */
+        draw_text_right(r, ui->use_mph ? "50" : "90", 235, content_y + 276, 1, text_wh);
+        draw_thick_line(r, 240, content_y + 280, 250, content_y + 280, 2, text_wh);
+
+        /* 60 tick at lower diagonal y = content_y + 345, x = 291 */
+        draw_text_right(r, ui->use_mph ? "35" : "60", 276, content_y + 341, 1, text_wh);
+        draw_thick_line(r, 281, content_y + 345, 291, content_y + 345, 2, text_wh);
+
+        /* 30 tick at lower diagonal y = content_y + 410, x = 333 */
+        draw_text_right(r, ui->use_mph ? "20" : "30", 318, content_y + 406, 1, text_wh);
+        draw_thick_line(r, 323, content_y + 410, 333, content_y + 410, 2, text_wh);
+
+        /* 0 tick at floor y = bot_y - 8, x = 375 */
+        draw_text_right(r, "0", 360, bot_y - 12, 1, text_wh);
+        draw_thick_line(r, 365, bot_y - 8, 375, bot_y - 8, 2, text_wh);
+
+        /* Authentic Right Power % Scale Ticks (ePower % 100, 75, 50, 25, 0 READY) */
+        draw_text(r, "ePower % 100", r_roof_x2 + 4, top_y - 18, 1, text_wh);
+
+        /* 75 tick at y = content_y + 105, x = 962 */
+        draw_thick_line(r, 962, content_y + 105, 972, content_y + 105, 2, text_wh);
+        draw_text(r, "75", 977, content_y + 101, 1, text_wh);
+
+        /* 50 tick at elbow y = content_y + 225, x = 1040 */
+        draw_thick_line(r, 1040, content_y + 225, 1050, content_y + 225, 2, text_wh);
+        draw_text(r, "50", 1055, content_y + 221, 1, text_wh);
+
+        /* 25 tick at lower diagonal y = content_y + 345, x = 989 */
+        draw_thick_line(r, 989, content_y + 345, 999, content_y + 345, 2, text_wh);
+        draw_text(r, "25", 1004, content_y + 341, 1, text_wh);
+
+        /* 0 READY tick at floor */
+        draw_text(r, "0 READY", 915, content_y + 416, 1, text_wh);
+
+        /* Right Floor Odometer & Slanted ADAPTIVE Pill (from Photos 1 & 2) */
+        int r_plug_x = 780;
+        int r_plug_y = bot_y - 14;
+        draw_icon_ev_plug(r, r_plug_x, r_plug_y + 4, text_wh);
+        draw_text(r, trip_str, r_plug_x + 14, r_plug_y, 2, text_wh);
+        draw_thick_line(r, r_plug_x, r_plug_y + 18, r_plug_x + 95, r_plug_y + 18, 2, bmw_cyan);
+
+        int pill_x = 880;
+        int pill_y = content_y + 440;
+        fill_rect(r, pill_x, pill_y, 85, 20, rgba(0, 100, 205, 220));
+        draw_rect(r, pill_x, pill_y, 85, 20, 1, bmw_cyan);
+        draw_text_centered(r, "ADAPTIVE", pill_x + 42, pill_y + 3, 1, text_wh);
+
+        /* 5. TOP CENTER OFFICIAL BMW ///M LOGO & LAP/DELTA STATUS */
+        char cur_t[16], bst_t[16];
+        format_lap_time(state->current_lap_ms, cur_t, sizeof(cur_t));
+        format_lap_time(state->best_lap_ms, bst_t, sizeof(bst_t));
+        char lap_summary[48];
+        snprintf(lap_summary, sizeof(lap_summary), "L%d %s",
+                 (state->current_lap > 0 ? state->current_lap : 1), cur_t);
+        draw_text(r, lap_summary, 445, content_y + 38, 1, text_dim);
+
+        /* Live Delta Pill at Top Right of Center */
+        int d_ms = state->delta_ms;
+        if (d_ms == 0 && state->best_lap_ms > 0 && state->current_lap_ms > 0) d_ms = state->current_lap_ms - state->best_lap_ms;
+        char d_buf[32];
+        snprintf(d_buf, sizeof(d_buf), "DELTA %+.3fs", (float)d_ms / 1000.0f);
+        fill_rect(r, 730, content_y + 34, 115, 20, (d_ms <= 0) ? rgba(20, 140, 60, 220) : rgba(180, 30, 30, 220));
+        draw_rect(r, 730, content_y + 34, 115, 20, 1, text_wh);
+        draw_text_centered(r, d_buf, 787, content_y + 37, 1, text_wh);
+
+        /* Center ///M Emblem */
+        draw_bmw_m_logo(r, 640, content_y + 60);
+
+        /* 6. CENTER STACKED DUAL SPEED (Secondary mph above, massive primary km/h below) */
+        char sec_spd_str[32];
+        snprintf(sec_spd_str, sizeof(sec_spd_str), "%d %s", spd_sec, ui->use_mph ? "km/h" : "mph");
+        draw_text_centered(r, sec_spd_str, 640, content_y + 100, 1, text_dim);
+
+        int digits = (spd_pri >= 100) ? 3 : ((spd_pri >= 10) ? 2 : 1);
+        draw_modern_number_centered(r, spd_pri, digits, false, 640, content_y + 135, 46, 84, 10, 8, text_wh);
+
+        int spd_w = digits * 46 + (digits - 1) * 8;
+        int unit_x = 640 + spd_w / 2 + 8;
+        int unit_y = content_y + 135 + 84 - 18;
+        draw_text(r, ui->use_mph ? "mph" : "km/h", unit_x, unit_y, 2, text_dim);
+
+        /* 7. ///M DIGITAL RPM RIBBON & ACTIVE GEAR CENTERED IN LOWER COCKPIT */
+        char rpm_m_str[32];
+        snprintf(rpm_m_str, sizeof(rpm_m_str), "%.0f RPM", state->engine_rpm);
+        draw_text_centered(r, rpm_m_str, 640, content_y + 382, 2, bmw_cyan);
+        float m_rpm_max = (state->rpm_limiter > 1000) ? (float)state->rpm_limiter : 8500.0f;
+        int m_segs = 16;
+        int m_lit = (int)((state->engine_rpm / m_rpm_max) * m_segs);
+        for (int s = 0; s < m_segs; ++s) {
+            rgba_t sc = (s < 8) ? m_blue : ((s < 12) ? rgba(245, 175, 20, 255) : m_red);
+            fill_rect(r, 528 + s * 14, content_y + 402, 11, 6, (s < m_lit) ? sc : rgba(20, 30, 48, 255));
+        }
+
+        draw_modern_char(r, gear_ch, 640 - 15, content_y + 436, 30, 42, 6, text_wh);
+
+        /* 8. MOTORSPORT TELEMETRY: FLANKING SIDES & LOWER CENTER */
+        /* Left Flank: Warning light column + Turbo Boost Gauge + Fluid Temps + Chassis Dynamics */
+        char bst_str[32];
+        snprintf(bst_str, sizeof(bst_str), "BOOST %+.2f BAR", state->turbo_bar);
+        draw_text(r, bst_str, 46, content_y + 68, 1, text_wh);
+        draw_rect(r, 46, content_y + 84, 130, 8, 1, rgba(60, 95, 140, 200));
+        float bst_norm = (state->turbo_bar + 1.0f) / 3.0f;
+        if (bst_norm < 0.0f) bst_norm = 0.0f;
+        if (bst_norm > 1.0f) bst_norm = 1.0f;
+        fill_rect(r, 48, content_y + 86, (int)(bst_norm * 126), 4, is_dynamic_flare ? m_red : bmw_cyan);
+
+        char fluid_str[48];
+        snprintf(fluid_str, sizeof(fluid_str), "OIL %.0f°C  H2O %.0f°C",
+                 (state->oil_temp > 0 ? state->oil_temp : 95.0f),
+                 (state->water_temp > 0 ? state->water_temp : 88.0f));
+        draw_text(r, fluid_str, 46, content_y + 100, 1, text_dim);
+
+        /* Left Flank Throttle trace */
+        draw_text(r, "THROTTLE", 46, content_y + 118, 1, text_dim);
+        draw_rect(r, 112, content_y + 119, 75, 7, 1, rgba(60, 95, 140, 200));
+        fill_rect(r, 112, content_y + 119, (int)(state->throttle_pct * 0.75f), 7, rgba(40, 220, 100, 255));
+
+        /* Lower-Left Flank ///M Chassis & Drivetrain Telemetry Card (True OLED Black) */
+        draw_panel(r, 44, content_y + 138, 152, 162, rgba(0, 0, 0, 255), rgba(0, 163, 224, 150), 8);
+        draw_text(r, "///M CHASSIS", 54, content_y + 146, 1, m_blue);
+        snprintf(fluid_str, sizeof(fluid_str), "SUSP %.0f/%.0f/%.0f/%.0f",
+                 state->susp_height[0], state->susp_height[1],
+                 state->susp_height[2], state->susp_height[3]);
+        draw_text(r, fluid_str, 54, content_y + 166, 1, text_wh);
+        snprintf(fluid_str, sizeof(fluid_str), "SLIP %.0f/%.0f/%.0f/%.0f%%",
+                 state->tire_slip_ratio[0] * 100.0f, state->tire_slip_ratio[1] * 100.0f,
+                 state->tire_slip_ratio[2] * 100.0f, state->tire_slip_ratio[3] * 100.0f);
+        draw_text(r, fluid_str, 54, content_y + 186, 1, bmw_cyan);
+        snprintf(fluid_str, sizeof(fluid_str), "STEER %+.1fD  RH %.0f", state->steer_angle_fl_deg, state->body_height);
+        draw_text(r, fluid_str, 54, content_y + 206, 1, text_dim);
+        float m_laps = (state->fuel_burn_per_lap > 0.1f) ? (state->fuel_pct / state->fuel_burn_per_lap) : (state->fuel_pct / 3.2f);
+        snprintf(fluid_str, sizeof(fluid_str), "FUEL %.0f%% (%.1fL)", state->fuel_pct, m_laps);
+        draw_text(r, fluid_str, 54, content_y + 226, 1, rgba(40, 220, 100, 255));
+        snprintf(fluid_str, sizeof(fluid_str), "CLU %.0f%%  GBX %.0f", (100.0f - state->clutch_pct), state->engine_rpm);
+        draw_text(r, fluid_str, 54, content_y + 246, 1, text_wh);
+        snprintf(fluid_str, sizeof(fluid_str), "AERO %.0f/%.0fKG", state->downforce_front_kg, state->downforce_rear_kg);
+        draw_text(r, fluid_str, 54, content_y + 266, 1, text_dim);
+        snprintf(fluid_str, sizeof(fluid_str), "RAD %.0f/%.0f R/S",
+                 (state->wheel_angular_speed[0] + state->wheel_angular_speed[1]) * 0.5f,
+                 (state->wheel_angular_speed[2] + state->wheel_angular_speed[3]) * 0.5f);
+        draw_text(r, fluid_str, 54, content_y + 284, 1, bmw_cyan);
+
+        /* Right Flank: G-Force Dynamics & Hybrid Energy + ///M Lap & Sector Split Card */
+        char gf_str[32];
+        snprintf(gf_str, sizeof(gf_str), "G %+.2fL / %+.2fN", state->g_lat, state->g_lon);
+        draw_text(r, gf_str, 1095, content_y + 68, 1, text_wh);
+
+        int g_cx = 1210, g_cy = content_y + 108, g_r = 16;
+        draw_circle(r, g_cx, g_cy, g_r, 1, rgba(60, 95, 140, 180));
+        draw_line(r, g_cx - g_r, g_cy, g_cx + g_r, g_cy, rgba(60, 95, 140, 180));
+        draw_line(r, g_cx, g_cy - g_r, g_cx, g_cy + g_r, rgba(60, 95, 140, 180));
+        int gdot_x = g_cx + (int)(state->g_lat * 9.0f);
+        int gdot_y = g_cy - (int)(state->g_lon * 9.0f);
+        fill_circle(r, gdot_x, gdot_y, 3, m_red);
+
+        char hbd_str[48];
+        snprintf(hbd_str, sizeof(hbd_str), "REGEN %+.1fkW", state->energy_recovery_kw);
+        draw_text(r, hbd_str, 1095, content_y + 100, 1, bmw_cyan);
+
+        /* Right Flank Brake trace */
+        draw_text(r, "BRAKE", 1095, content_y + 118, 1, text_dim);
+        draw_rect(r, 1145, content_y + 119, 85, 7, 1, rgba(60, 95, 140, 200));
+        fill_rect(r, 1145, content_y + 119, (int)(state->brake_pct * 0.85f), 7, m_red);
+
+        /* Lower-Right Flank ///M Lap & Sector Split Card (True OLED Black) */
+        draw_panel(r, 1084, content_y + 138, 156, 162, rgba(0, 0, 0, 255), rgba(230, 26, 35, 160), 8);
+        draw_text(r, "///M LAP TIMER", 1094, content_y + 146, 1, m_red);
+        snprintf(hbd_str, sizeof(hbd_str), "BEST %s", bst_t);
+        draw_text(r, hbd_str, 1094, content_y + 166, 1, rgba(195, 85, 255, 255));
+        char lst_t[16];
+        format_lap_time(state->last_lap_ms, lst_t, sizeof(lst_t));
+        snprintf(hbd_str, sizeof(hbd_str), "LAST %s", lst_t);
+        draw_text(r, hbd_str, 1094, content_y + 186, 1, text_wh);
+        char s1_t[16], s2_t[16], s3_t[16];
+        format_sector_time(state->cur_sector_ms[0], s1_t, sizeof(s1_t));
+        format_sector_time(state->cur_sector_ms[1], s2_t, sizeof(s2_t));
+        format_sector_time(state->cur_sector_ms[2], s3_t, sizeof(s3_t));
+        snprintf(hbd_str, sizeof(hbd_str), "S1 %s  S2 %s", s1_t, s2_t);
+        draw_text(r, hbd_str, 1094, content_y + 206, 1, bmw_cyan);
+        snprintf(hbd_str, sizeof(hbd_str), "S3 %s  POS P%d", s3_t, state->race_position > 0 ? state->race_position : 2);
+        draw_text(r, hbd_str, 1094, content_y + 226, 1, text_wh);
+        snprintf(hbd_str, sizeof(hbd_str), "CAT %s  TOP %.0fK",
+                 state->car_category[0] ? state->car_category : "GR3", state->session_top_speed_kmh);
+        draw_text(r, hbd_str, 1094, content_y + 246, 1, gold);
+        snprintf(hbd_str, sizeof(hbd_str), "TV %.0f/%.0fNM", state->torque_vector_nm[0], state->torque_vector_nm[2]);
+        draw_text(r, hbd_str, 1094, content_y + 266, 1, text_dim);
+        snprintf(hbd_str, sizeof(hbd_str), "BB %+d  TCS %d  MAP %d",
+                 state->gt7_brake_bal, state->gt7_tcs_level, state->gt7_fuel_map);
+        draw_text(r, hbd_str, 1094, content_y + 284, 1, bmw_cyan);
+
+        /* Lower Center Flanking Gear: 4-Tire Heat Badges with dynamic heat coloring */
+        char fl_str[32], fr_str[32], rl_str[32], rr_str[32];
+        snprintf(fl_str, sizeof(fl_str), "FL %.0f°", state->tire_temp[0] > 0 ? state->tire_temp[0] : 82.0f);
+        snprintf(fr_str, sizeof(fr_str), "FR %.0f°", state->tire_temp[1] > 0 ? state->tire_temp[1] : 85.0f);
+        snprintf(rl_str, sizeof(rl_str), "RL %.0f°", state->tire_temp[2] > 0 ? state->tire_temp[2] : 88.0f);
+        snprintf(rr_str, sizeof(rr_str), "RR %.0f°", state->tire_temp[3] > 0 ? state->tire_temp[3] : 86.0f);
+
+        rgba_t t_col0 = (state->tire_temp[0] > 95.0f) ? m_red : ((state->tire_temp[0] > 70.0f) ? rgba(40, 220, 100, 255) : bmw_cyan);
+        rgba_t t_col1 = (state->tire_temp[1] > 95.0f) ? m_red : ((state->tire_temp[1] > 70.0f) ? rgba(40, 220, 100, 255) : bmw_cyan);
+        rgba_t t_col2 = (state->tire_temp[2] > 95.0f) ? m_red : ((state->tire_temp[2] > 70.0f) ? rgba(40, 220, 100, 255) : bmw_cyan);
+        rgba_t t_col3 = (state->tire_temp[3] > 95.0f) ? m_red : ((state->tire_temp[3] > 70.0f) ? rgba(40, 220, 100, 255) : bmw_cyan);
+
+        draw_text(r, fl_str, 540, content_y + 438, 1, t_col0);
+        draw_text(r, fr_str, 705, content_y + 438, 1, t_col1);
+        draw_text(r, rl_str, 540, content_y + 460, 1, t_col2);
+        draw_text(r, rr_str, 705, content_y + 460, 1, t_col3);
     }
 
-    /* Dynamic Modern Vector Gear Indicator in crook of right chevron */
-    bool is_p = (state->speed_kmh < 1.0f && state->current_gear <= 0);
-    bool is_r = (state->current_gear == 0);
-    bool is_n = (state->current_gear == -1);
-    bool is_sport = (state->throttle_pct > 75.0f);
+    /* =========================================================================
+     * VIEW 2: BMW 3D NAVIGATION MAP COCKPIT (Photo 3)
+     * Full 3D Night Navigation Map filling center between chevrons,
+     * Left Crook: Stacked speed (0 mph over 0 km/h) & outer speed scale ticks,
+     * Right Crook: Giant Gear, READY 0, Trip 1503.7 km, ADAPTIVE pill & power scale.
+     * ========================================================================= */
+    else if (ui->bmw_view == BMW_VIEW_MAP_COCKPIT) {
+        int top_y = content_y + 40;
+        int bot_y = content_y + content_h - 55;
+        int mid_y_top = content_y + 195;
+        int mid_y_bot = content_y + 265;
 
-    if (is_p) {
-        draw_modern_char(r, 'P', SCREEN_W - 390, cy - 35, 40, 58, 8, text_wh);
-    } else if (is_r) {
-        draw_modern_char(r, 'R', SCREEN_W - 390, cy - 35, 40, 58, 8, rgba(255, 195, 45, 255));
-    } else if (is_n) {
-        draw_modern_char(r, 'N', SCREEN_W - 390, cy - 35, 40, 58, 8, text_wh);
-    } else {
-        draw_modern_char(r, is_sport ? 'S' : 'D', SCREEN_W - 405, cy - 35, 36, 58, 7, is_sport ? rgba(255, 60, 60, 255) : text_wh);
-        draw_modern_char(r, '0' + state->current_gear, SCREEN_W - 362, cy - 35, 26, 58, 6, is_sport ? rgba(255, 60, 60, 255) : bmw_cyan);
+        /* Symmetrical outer chevrons matching Photo 3 */
+        int l_elb_x = 135;
+        int l_roof_x1 = 265, l_roof_x2 = 310;
+        int l_floor_x1 = 265, l_floor_x2 = 310;
+
+        int r_elb_x = 1280 - 135; /* 1145 */
+        int r_roof_x1 = 1280 - 265, r_roof_x2 = 1280 - 310; /* 1015 to 970 */
+        int r_floor_x1 = 1280 - 265, r_floor_x2 = 1280 - 310; /* 1015 to 970 */
+
+        /* 3D Night Navigation City Map Canvas on True OLED Pitch Black (framed between chevrons) */
+        int map_x = 295;
+        int map_w = 690;
+        fill_rect(r, map_x, content_y + 36, map_w, content_h - 90, rgba(0, 0, 0, 255));
+        draw_rect(r, map_x, content_y + 36, map_w, content_h - 90, 1, rgba(20, 45, 80, 150));
+
+        /* Realistic GPS Vector Street Grid (matching Photo 3) */
+        /* Major Avenue cutting diagonally across city */
+        draw_thick_line(r, map_x + 190, content_y + content_h - 60, map_x + 130, content_y + 36, 7, rgba(25, 42, 68, 255));
+        draw_thick_line(r, map_x + 190, content_y + content_h - 60, map_x + 130, content_y + 36, 3, rgba(235, 242, 255, 220));
+
+        /* Cross Boulevards */
+        draw_thick_line(r, map_x + 10, content_y + 130, map_x + map_w - 10, content_y + 130, 3, rgba(160, 190, 225, 190));
+        draw_thick_line(r, map_x + 10, content_y + 245, map_x + map_w - 10, content_y + 245, 4, rgba(210, 230, 255, 220));
+        draw_thick_line(r, map_x + 10, content_y + 375, map_x + map_w - 10, content_y + 375, 3, rgba(160, 190, 225, 190));
+        draw_thick_line(r, map_x + 10, content_y + 450, map_x + map_w - 10, content_y + 450, 2, rgba(120, 155, 195, 160));
+
+        /* North-South Connected Streets */
+        static const int map_ns_x[] = { 50, 140, 220, 310, 400, 490, 580, 650 };
+        for (size_t s = 0; s < sizeof(map_ns_x) / sizeof(map_ns_x[0]); s++) {
+            draw_thick_line(r, map_x + map_ns_x[s], content_y + 36, map_x + map_ns_x[s] + 12, content_y + content_h - 60, 2, rgba(135, 170, 210, 180));
+        }
+
+        /* Diagonal Residential Streets */
+        draw_thick_line(r, map_x + 360, content_y + 36, map_x + 580, content_y + 245, 2, rgba(110, 145, 185, 160));
+        draw_thick_line(r, map_x + 420, content_y + 245, map_x + 640, content_y + 435, 2, rgba(110, 145, 185, 160));
+        draw_thick_line(r, map_x + 40, content_y + 175, map_x + 150, content_y + 295, 2, rgba(110, 145, 185, 160));
+        draw_thick_line(r, map_x + 180, content_y + 245, map_x + 320, content_y + 415, 2, rgba(110, 145, 185, 160));
+
+        /* Golden 3D Navigation Cursor */
+        int nav_cx = map_x + 220;
+        int nav_cy = content_y + 340;
+        draw_thick_line(r, nav_cx, nav_cy - 14, nav_cx - 10, nav_cy + 10, 3, gold);
+        draw_thick_line(r, nav_cx, nav_cy - 14, nav_cx + 10, nav_cy + 10, 3, gold);
+        draw_thick_line(r, nav_cx - 10, nav_cy + 10, nav_cx, nav_cy + 3, 2, gold);
+        draw_thick_line(r, nav_cx + 10, nav_cy + 10, nav_cx, nav_cy + 3, 2, gold);
+
+        /* Left Chevron Outer Bezel */
+        draw_thick_line(r, l_elb_x, mid_y_top, l_elb_x, mid_y_bot, 2, chevron_outer);
+        draw_thick_line(r, l_elb_x, mid_y_top, l_roof_x1, top_y, 2, chevron_outer);
+        draw_thick_line(r, l_roof_x1, top_y, l_roof_x2, top_y, 2, chevron_outer);
+        draw_thick_line(r, l_elb_x, mid_y_bot, l_floor_x1, bot_y, 2, chevron_outer);
+        draw_thick_line(r, l_floor_x1, bot_y, l_floor_x2, bot_y, 2, chevron_outer);
+
+        /* Right Chevron Outer Bezel */
+        draw_thick_line(r, r_elb_x, mid_y_top, r_elb_x, mid_y_bot, 2, chevron_outer);
+        draw_thick_line(r, r_elb_x, mid_y_top, r_roof_x1, top_y, 2, chevron_outer);
+        draw_thick_line(r, r_roof_x1, top_y, r_roof_x2, top_y, 2, chevron_outer);
+        draw_thick_line(r, r_elb_x, mid_y_bot, r_floor_x1, bot_y, 2, chevron_outer);
+        draw_thick_line(r, r_floor_x1, bot_y, r_floor_x2, bot_y, 2, chevron_outer);
+
+        fill_rect(r, l_roof_x1 + 4, top_y - 3, 10, 4, m_blue);
+        fill_rect(r, l_roof_x1 + 14, top_y - 3, 10, 4, m_dark_blue);
+        fill_rect(r, l_roof_x1 + 24, top_y - 3, 10, 4, m_red);
+        fill_rect(r, r_roof_x2 + 4, top_y - 3, 30, 4, bmw_cyan);
+
+        /* Left Chevron Scale Ticks (Photo 3) */
+        char left_top_hdr[32];
+        snprintf(left_top_hdr, sizeof(left_top_hdr), "%d%s", ui->use_mph ? 140 : 220, ui->use_mph ? "mph" : "km/h");
+        draw_text(r, left_top_hdr, l_roof_x1 - 10, top_y - 18, 1, text_wh);
+        draw_text_right(r, ui->use_mph ? "110" : "180", 225, content_y + 85, 1, text_wh);
+        draw_thick_line(r, 230, content_y + 89, 238, content_y + 89, 2, text_wh);
+        draw_text_right(r, ui->use_mph ? "90" : "150", 185, content_y + 135, 1, text_wh);
+        draw_thick_line(r, 190, content_y + 139, 198, content_y + 139, 2, text_wh);
+        draw_text_right(r, ui->use_mph ? "70" : "120", 125, content_y + 190, 1, text_wh);
+        draw_thick_line(r, 128, content_y + 194, 135, content_y + 194, 2, text_wh);
+        draw_text_right(r, ui->use_mph ? "50" : "90", 138, content_y + 280, 1, text_wh);
+        draw_thick_line(r, 142, content_y + 284, 150, content_y + 284, 2, text_wh);
+        draw_text_right(r, ui->use_mph ? "35" : "60", 180, content_y + 345, 1, text_wh);
+        draw_thick_line(r, 185, content_y + 349, 195, content_y + 349, 2, text_wh);
+        draw_text_right(r, ui->use_mph ? "20" : "30", 220, content_y + 410, 1, text_wh);
+        draw_thick_line(r, 225, content_y + 414, 235, content_y + 414, 2, text_wh);
+        draw_text_right(r, "0", 252, bot_y - 12, 1, text_wh);
+        draw_thick_line(r, 255, bot_y - 8, 265, bot_y - 8, 2, text_wh);
+
+        /* Left Crook Stacked Speed: 0 mph above large 0 km/h (Photo 3) */
+        int spd_cx = 200;
+        int spd_y = content_y + 225;
+        char sec_spd_map[32];
+        snprintf(sec_spd_map, sizeof(sec_spd_map), "%d %s", spd_sec, ui->use_mph ? "km/h" : "mph");
+        draw_text_centered(r, sec_spd_map, spd_cx, spd_y - 28, 1, text_dim);
+
+        int digits = (spd_pri >= 100) ? 3 : ((spd_pri >= 10) ? 2 : 1);
+        draw_modern_number_centered(r, spd_pri, digits, false, spd_cx, spd_y, 38, 70, 8, 7, text_wh);
+        draw_text_centered(r, ui->use_mph ? "mph" : "km/h", spd_cx, spd_y + 76, 2, text_dim);
+
+        /* Right Chevron Scale Ticks (Photo 3) */
+        draw_text(r, "ePower % 100", r_roof_x2 + 4, top_y - 18, 1, text_wh);
+        draw_thick_line(r, 1042, content_y + 105, 1052, content_y + 105, 2, text_wh);
+        draw_text(r, "75", 1057, content_y + 101, 1, text_wh);
+        draw_thick_line(r, 1145, content_y + 225, 1155, content_y + 225, 2, text_wh);
+        draw_text(r, "50", 1160, content_y + 221, 1, text_wh);
+        draw_thick_line(r, 1085, content_y + 345, 1095, content_y + 345, 2, text_wh);
+        draw_text(r, "25", 1100, content_y + 341, 1, text_wh);
+
+        /* Right Crook: Huge Gear, READY 0, Trip 1503.7 km, ADAPTIVE (Photo 3) */
+        int gear_cx = 1080;
+        int gear_y = content_y + 225;
+        draw_modern_char(r, gear_ch, gear_cx - 19, gear_y, 38, 70, 8, text_wh);
+        draw_text_centered(r, "READY 0", gear_cx, content_y + 355, 2, text_wh);
+
+        draw_icon_ev_plug(r, gear_cx - 48, content_y + 392, text_wh);
+        draw_text(r, trip_str, gear_cx - 34, content_y + 388, 2, text_wh);
+        draw_thick_line(r, gear_cx - 48, content_y + 408, gear_cx + 48, content_y + 408, 2, bmw_cyan);
+
+        int pill_x = gear_cx - 42;
+        int pill_y = content_y + 428;
+        fill_rect(r, pill_x, pill_y, 85, 20, rgba(0, 100, 200, 220));
+        draw_rect(r, pill_x, pill_y, 85, 20, 1, bmw_cyan);
+        draw_text_centered(r, "ADAPTIVE", pill_x + 42, pill_y + 3, 1, text_wh);
+
+        /* Top Track & Motorsport Overlay Banner on True OLED Black */
+        fill_rect(r, map_x + 20, content_y + 40, map_w - 40, 24, rgba(0, 0, 0, 245));
+        draw_rect(r, map_x + 20, content_y + 40, map_w - 40, 24, 1, rgba(0, 160, 255, 110));
+        char map_top[256];
+        snprintf(map_top, sizeof(map_top), "%s   |   LAP %d/%d   |   POS %d/%d   |   BOOST %+.2f BAR",
+                 state->circuit_name[0] ? state->circuit_name : "SUZUKA CIRCUIT",
+                 state->current_lap > 0 ? state->current_lap : 1,
+                 state->total_laps > 0 ? state->total_laps : 10,
+                 state->race_position > 0 ? state->race_position : 2,
+                 state->total_cars > 0 ? state->total_cars : 16,
+                 state->turbo_bar);
+        draw_text_centered(r, map_top, map_x + map_w / 2, content_y + 45, 1, text_wh);
+
+        /* Bottom Map Telemetry Overlay Banner (Sector Splits, Pedals, G-Load & Tires) */
+        fill_rect(r, map_x + 20, bot_y - 28, map_w - 40, 24, rgba(0, 0, 0, 245));
+        draw_rect(r, map_x + 20, bot_y - 28, map_w - 40, 24, 1, rgba(0, 160, 255, 110));
+        char s1_b[16], s2_b[16], s3_b[16];
+        format_sector_time(state->cur_sector_ms[0], s1_b, sizeof(s1_b));
+        format_sector_time(state->cur_sector_ms[1], s2_b, sizeof(s2_b));
+        format_sector_time(state->cur_sector_ms[2], s3_b, sizeof(s3_b));
+        snprintf(map_top, sizeof(map_top), "S1 %s  S2 %s  S3 %s  |  THR %.0f%% BRK %.0f%%  |  FL %.0f° FR %.0f° RL %.0f° RR %.0f°",
+                 s1_b, s2_b, s3_b, state->throttle_pct, state->brake_pct,
+                 state->tire_temp[0], state->tire_temp[1], state->tire_temp[2], state->tire_temp[3]);
+        draw_text_centered(r, map_top, map_x + map_w / 2, bot_y - 23, 1, bmw_cyan);
+
+        /* Left & Right Outer Flank Vitals in 3D Map Mode */
+        snprintf(map_top, sizeof(map_top), "%.0f RPM", state->engine_rpm);
+        draw_text(r, map_top, 16, content_y + 45, 1, bmw_cyan);
+        snprintf(map_top, sizeof(map_top), "H2O %.0f° OIL %.0f°", state->water_temp, state->oil_temp);
+        draw_text(r, map_top, 16, content_y + 62, 1, text_dim);
+        snprintf(map_top, sizeof(map_top), "SUSP %.0f/%.0fMM", state->susp_height[0], state->susp_height[2]);
+        draw_text(r, map_top, 16, content_y + 79, 1, text_wh);
+        snprintf(map_top, sizeof(map_top), "STEER %+.1f°", state->steer_angle_fl_deg);
+        draw_text(r, map_top, 16, content_y + 96, 1, bmw_cyan);
+
+        snprintf(map_top, sizeof(map_top), "DELTA %+.3fs", (float)state->delta_ms / 1000.0f);
+        draw_text_right(r, map_top, 1264, content_y + 45, 1, (state->delta_ms <= 0) ? rgba(40, 220, 100, 255) : m_red);
+        snprintf(map_top, sizeof(map_top), "G %+.2fL/%+.2fN", state->g_lat, state->g_lon);
+        draw_text_right(r, map_top, 1264, content_y + 62, 1, text_dim);
+        snprintf(map_top, sizeof(map_top), "ERS %+.0fKW", state->energy_recovery_kw);
+        draw_text_right(r, map_top, 1264, content_y + 79, 1, bmw_cyan);
+        snprintf(map_top, sizeof(map_top), "FUEL %.0f%%", state->fuel_pct);
+        draw_text_right(r, map_top, 1264, content_y + 96, 1, rgba(40, 220, 100, 255));
     }
 
-    /* Live Energy Recovery / Drive Output in kW */
-    char bmw_kw[24];
-    if (state->energy_recovery_kw < -1.0f) {
-        snprintf(bmw_kw, sizeof(bmw_kw), "-%d kW", (int)fabsf(state->energy_recovery_kw));
-        draw_text_centered(r, bmw_kw, SCREEN_W - 370, cy + 34, 2, bmw_green);
-    } else if (state->energy_recovery_kw > 1.0f) {
-        snprintf(bmw_kw, sizeof(bmw_kw), "+%d kW", (int)state->energy_recovery_kw);
-        draw_text_centered(r, bmw_kw, SCREEN_W - 370, cy + 34, 2, bmw_cyan);
+    /* =========================================================================
+     * VIEW 3: BMW ASSISTED DRIVING & HIGHWAY RADAR VIEW (Photo 5)
+     * Single Left Diagonal Chevron, Perspective Highway Corridor, 3D Rendered
+     * BMW Vehicle in Lane, Speed Corridor (135 min / 310 max), Radar Gateway Barrier (276 km).
+     * ========================================================================= */
+    else if (ui->bmw_view == BMW_VIEW_ASSIST_RADAR) {
+        int top_y = content_y + 40;
+        int bot_y = content_y + content_h - 55;
+        int l_elb_x = 140;
+        int l_roof_x1 = 270, l_roof_x2 = 320;
+        int l_floor_x1 = 340, l_floor_x2 = 390;
+
+        /* Single Left Diagonal Chevron Frame */
+        draw_thick_line(r, l_elb_x, content_y + 195, l_elb_x, content_y + 265, 2, chevron_outer);
+        draw_thick_line(r, l_elb_x, content_y + 195, l_roof_x1, top_y, 2, chevron_outer);
+        draw_thick_line(r, l_roof_x1, top_y, l_roof_x2, top_y, 2, chevron_outer);
+        draw_thick_line(r, l_elb_x, content_y + 265, l_floor_x1, bot_y, 2, chevron_outer);
+        draw_thick_line(r, l_floor_x1, bot_y, l_floor_x2, bot_y, 2, chevron_outer);
+
+        fill_rect(r, l_roof_x1 + 4, top_y - 3, 12, 4, m_blue);
+        fill_rect(r, l_roof_x1 + 16, top_y - 3, 12, 4, m_dark_blue);
+        fill_rect(r, l_roof_x1 + 28, top_y - 3, 12, 4, m_red);
+
+        draw_text_right(r, "20", l_floor_x1 - 15, bot_y - 12, 1, text_wh);
+        draw_thick_line(r, l_floor_x1 - 10, bot_y - 8, l_floor_x1 + 2, bot_y - 8, 2, text_wh);
+        draw_text(r, ui->use_mph ? "mph" : "km/h", l_floor_x1 - 65, bot_y + 2, 1, text_dim);
+
+        /* Left Stacked Speed (Photo 5) + Upper Left RPM/Gear Readout */
+        char rad_l_buf[48];
+        snprintf(rad_l_buf, sizeof(rad_l_buf), "GEAR %c  |  %.0f RPM", gear_ch, state->engine_rpm);
+        draw_text(r, rad_l_buf, 16, content_y + 48, 1, bmw_cyan);
+        snprintf(rad_l_buf, sizeof(rad_l_buf), "H2O %.0f°C  OIL %.0f°C", state->water_temp, state->oil_temp);
+        draw_text(r, rad_l_buf, 16, content_y + 66, 1, text_dim);
+        snprintf(rad_l_buf, sizeof(rad_l_buf), "SUSP %.0f/%.0fMM", state->susp_height[0], state->susp_height[2]);
+        draw_text(r, rad_l_buf, 16, content_y + 84, 1, text_wh);
+        snprintf(rad_l_buf, sizeof(rad_l_buf), "SLIP %.0f/%.0f%%", state->tire_slip_ratio[0] * 100.0f, state->tire_slip_ratio[2] * 100.0f);
+        draw_text(r, rad_l_buf, 16, content_y + 102, 1, bmw_cyan);
+        snprintf(rad_l_buf, sizeof(rad_l_buf), "STEER %+.1f°", state->steer_angle_fl_deg);
+        draw_text(r, rad_l_buf, 16, content_y + 120, 1, text_dim);
+
+        int spd_cx = 180;
+        int spd_y = content_y + 245;
+        char sec_spd_radar[32];
+        snprintf(sec_spd_radar, sizeof(sec_spd_radar), "%d %s", spd_sec, ui->use_mph ? "km/h" : "mph");
+        draw_text_centered(r, sec_spd_radar, spd_cx, spd_y - 28, 1, text_dim);
+
+        int digits = (spd_pri >= 100) ? 3 : ((spd_pri >= 10) ? 2 : 1);
+        draw_modern_number_centered(r, spd_pri, digits, false, spd_cx, spd_y, 42, 76, 9, 8, text_wh);
+        draw_text(r, ui->use_mph ? "mph" : "km/h", spd_cx + 42, spd_y + 55, 1, text_dim);
+
+        /* 3D PERSPECTIVE HIGHWAY CORRIDOR (from Photo 5) */
+        int hwy_y = content_y + 360;
+        /* Highway lane asphalt surface */
+        fill_rect(r, 420, hwy_y - 4, 760, 18, rgba(22, 38, 65, 230));
+        draw_thick_line(r, 420, hwy_y - 4, 1180, hwy_y - 4, 2, rgba(0, 190, 255, 220));
+        draw_thick_line(r, 420, hwy_y + 14, 1180, hwy_y + 14, 2, rgba(0, 190, 255, 220));
+
+        /* Lane dash markings */
+        for (int dx = 440; dx < 1160; dx += 60) {
+            draw_thick_line(r, dx, hwy_y + 5, dx + 30, hwy_y + 5, 2, rgba(140, 215, 255, 160));
+        }
+
+        /* 3D Rendered BMW Vehicle in Lane */
+        draw_bmw_3d_car(r, 550, hwy_y - 14);
+
+        /* Speed corridor text below lane (Photo 5: 135 km min / 310 km max) */
+        draw_text_centered(r, "135 km", 730, hwy_y + 24, 2, text_wh);
+        draw_text_centered(r, "min", 730, hwy_y + 42, 1, text_dim);
+
+        draw_text_centered(r, "310 km", 1060, hwy_y + 24, 2, text_wh);
+        draw_text_centered(r, "max", 1060, hwy_y + 42, 1, text_dim);
+
+        /* Floating 3D Radar Target Barrier ahead (Photo 5) */
+        int bar_x = 1010;
+        draw_thick_line(r, bar_x, hwy_y - 85, bar_x, hwy_y + 14, 2, rgba(245, 250, 255, 240));
+        draw_thick_line(r, bar_x + 36, hwy_y - 65, bar_x + 36, hwy_y + 14, 1, rgba(200, 225, 255, 180));
+        draw_thick_line(r, bar_x, hwy_y - 85, bar_x + 36, hwy_y - 65, 1, rgba(200, 225, 255, 180));
+        fill_rect(r, bar_x + 2, hwy_y - 75, 34, 85, rgba(0, 140, 255, 55));
+
+        /* Range readout above radar barrier */
+        draw_icon_ev_plug(r, bar_x - 14, hwy_y - 105, text_wh);
+        draw_text(r, "276 km", bar_x + 2, hwy_y - 110, 2, text_wh);
+
+        /* READY status text on right floor */
+        draw_text(r, "READY", 940, bot_y - 12, 2, text_wh);
+
+        /* Upper Motorsport Telemetry HUD on True OLED Black */
+        fill_rect(r, 420, content_y + 40, 760, 50, rgba(0, 0, 0, 255));
+        draw_rect(r, 420, content_y + 40, 760, 50, 1, rgba(0, 180, 255, 120));
+        char rad_telem1[256], rad_telem2[256];
+        snprintf(rad_telem1, sizeof(rad_telem1), "CIRCUIT: %s   |   LAP %d/%d   |   POS %d/%d   |   CAT %s",
+                 state->circuit_name[0] ? state->circuit_name : "NURBURGRING",
+                 state->current_lap > 0 ? state->current_lap : 1,
+                 state->total_laps > 0 ? state->total_laps : 10,
+                 state->race_position > 0 ? state->race_position : 2,
+                 state->total_cars > 0 ? state->total_cars : 16,
+                 state->car_category[0] ? state->car_category : "GR3");
+        snprintf(rad_telem2, sizeof(rad_telem2), "BOOST %+.2f BAR   G: %+.2fL / %+.2fN   TIRES FL %.0f° FR %.0f° RL %.0f° RR %.0f°",
+                 state->turbo_bar, state->g_lat, state->g_lon,
+                 state->tire_temp[0] > 0 ? state->tire_temp[0] : 82.0f,
+                 state->tire_temp[1] > 0 ? state->tire_temp[1] : 85.0f,
+                 state->tire_temp[2] > 0 ? state->tire_temp[2] : 88.0f,
+                 state->tire_temp[3] > 0 ? state->tire_temp[3] : 86.0f);
+        draw_text(r, rad_telem1, 435, content_y + 48, 1, text_wh);
+        draw_text(r, rad_telem2, 435, content_y + 68, 1, bmw_cyan);
+
+        /* Mid-Right ///M Sector Splits & Chassis Dynamics Pods (fills open space above highway) */
+        draw_panel(r, 420, content_y + 100, 365, 118, rgba(0, 0, 0, 255), rgba(0, 163, 224, 140), 8);
+        draw_text(r, "///M LAP & SECTOR TIMING", 434, content_y + 108, 1, m_blue);
+        char cur_r[16], bst_r[16], s1_r[16], s2_r[16], s3_r[16];
+        format_lap_time(state->current_lap_ms, cur_r, sizeof(cur_r));
+        format_lap_time(state->best_lap_ms, bst_r, sizeof(bst_r));
+        format_sector_time(state->cur_sector_ms[0], s1_r, sizeof(s1_r));
+        format_sector_time(state->cur_sector_ms[1], s2_r, sizeof(s2_r));
+        format_sector_time(state->cur_sector_ms[2], s3_r, sizeof(s3_r));
+        snprintf(rad_telem1, sizeof(rad_telem1), "CURR %s   BEST %s", cur_r, bst_r);
+        draw_text(r, rad_telem1, 434, content_y + 128, 2, text_wh);
+        snprintf(rad_telem1, sizeof(rad_telem1), "DELTA %+.3fs   |   TOP %.1f KM/H",
+                 (float)state->delta_ms / 1000.0f, state->session_top_speed_kmh);
+        draw_text(r, rad_telem1, 434, content_y + 158, 1, (state->delta_ms <= 0) ? rgba(40, 220, 100, 255) : m_red);
+        snprintf(rad_telem1, sizeof(rad_telem1), "S1 %s   |   S2 %s   |   S3 %s", s1_r, s2_r, s3_r);
+        draw_text(r, rad_telem1, 434, content_y + 182, 1, bmw_cyan);
+
+        draw_panel(r, 795, content_y + 100, 385, 118, rgba(0, 0, 0, 255), rgba(230, 26, 35, 140), 8);
+        draw_text(r, "///M DRIVETRAIN & PEDAL TRACE", 809, content_y + 108, 1, m_red);
+        draw_text(r, "THR", 809, content_y + 128, 1, rgba(40, 220, 100, 255));
+        fill_rect(r, 845, content_y + 129, 130, 8, rgba(16, 26, 38, 255));
+        fill_rect(r, 845, content_y + 129, (int)(130.0f * state->throttle_pct / 100.0f), 8, rgba(40, 220, 100, 255));
+        draw_text(r, "BRK", 995, content_y + 128, 1, m_red);
+        fill_rect(r, 1030, content_y + 129, 130, 8, rgba(28, 16, 22, 255));
+        fill_rect(r, 1030, content_y + 129, (int)(130.0f * state->brake_pct / 100.0f), 8, m_red);
+        snprintf(rad_telem1, sizeof(rad_telem1), "SUSP %.0f/%.0f/%.0f/%.0fMM   STEER %+.1fD   RH %.0fMM",
+                 state->susp_height[0], state->susp_height[1],
+                 state->susp_height[2], state->susp_height[3],
+                 state->steer_angle_fl_deg, state->body_height);
+        draw_text(r, rad_telem1, 809, content_y + 154, 1, text_wh);
+        snprintf(rad_telem1, sizeof(rad_telem1), "FUEL %.1f%% (%.1f LAPS)   ERS %+.0fKW   CLU %.0f%%",
+                 state->fuel_pct, (state->fuel_burn_per_lap > 0.1f) ? (state->fuel_pct / state->fuel_burn_per_lap) : 21.2f,
+                 state->energy_recovery_kw, (100.0f - state->clutch_pct));
+        draw_text(r, rad_telem1, 809, content_y + 180, 1, bmw_cyan);
     }
 
-    /* Translucent BMW M Right Tyres & M xDrive AWD Widget */
-    fill_rect(r, SCREEN_W - 164, cy - 100, 140, 68, rgba(6, 14, 26, 185));
-    draw_rect(r, SCREEN_W - 164, cy - 100, 140, 68, 1, rgba(25, 50, 85, 200));
-    draw_text(r, "TYRES (RIGHT)", SCREEN_W - 156, cy - 94, 1, text_dim);
-    char bmw_rtbuf[32];
-    char sc_fr = (state->surface_type[1] != 0) ? (char)state->surface_type[1] : 'T';
-    snprintf(bmw_rtbuf, sizeof(bmw_rtbuf), "FR %.0f°[%c] RR %.0f°", state->tire_temp[1], sc_fr, state->tire_temp[3]);
-    draw_text(r, bmw_rtbuf, SCREEN_W - 156, cy - 76, 1, tire_temp_color(state->tire_temp[1]));
-    snprintf(bmw_rtbuf, sizeof(bmw_rtbuf), "M xDRIVE F46:R54");
-    draw_text(r, bmw_rtbuf, SCREEN_W - 156, cy - 56, 1, bmw_cyan);
+    /* =========================================================================
+     * VIEW 4: BMW MINIMALIST / PANORAMIC 3D MAP VIEW (Photo 4)
+     * Single Left Diagonal Chevron with Wide Panoramic City Street Navigation Map.
+     * ========================================================================= */
+    else {
+        int top_y = content_y + 40;
+        int bot_y = content_y + content_h - 55;
+        int l_elb_x = 140;
+        int l_roof_x1 = 270, l_roof_x2 = 320;
+        int l_floor_x1 = 340, l_floor_x2 = 390;
 
-    /* Dynamic Lower inner tab: ADAPTIVE / SPORT / REGEN / PARK mode pill */
-    const char *mode_name = "ADAPTIVE";
-    rgba_t mode_color = bmw_cyan;
-    rgba_t mode_bg = rgba(0, 48, 90, 240);
+        /* Single Left Chevron Frame */
+        draw_thick_line(r, l_elb_x, content_y + 195, l_elb_x, content_y + 265, 2, chevron_outer);
+        draw_thick_line(r, l_elb_x, content_y + 195, l_roof_x1, top_y, 2, chevron_outer);
+        draw_thick_line(r, l_roof_x1, top_y, l_roof_x2, top_y, 2, chevron_outer);
+        draw_thick_line(r, l_elb_x, content_y + 265, l_floor_x1, bot_y, 2, chevron_outer);
+        draw_thick_line(r, l_floor_x1, bot_y, l_floor_x2, bot_y, 2, chevron_outer);
 
-    if (charge_pct > 5.0f) {
-        mode_name = "REGEN";
-        mode_color = bmw_green;
-        mode_bg = rgba(0, 60, 40, 240);
-    } else if (is_sport) {
-        mode_name = "SPORT";
-        mode_color = rgba(255, 60, 60, 255);
-        mode_bg = rgba(90, 15, 25, 240);
-    } else if (is_p) {
-        mode_name = "PARK";
-        mode_color = text_dim;
-        mode_bg = rgba(25, 35, 50, 240);
+        fill_rect(r, l_roof_x1 + 4, top_y - 3, 12, 4, m_blue);
+        fill_rect(r, l_roof_x1 + 16, top_y - 3, 12, 4, m_dark_blue);
+        fill_rect(r, l_roof_x1 + 28, top_y - 3, 12, 4, m_red);
+
+        draw_text_right(r, "20", l_floor_x1 - 15, bot_y - 12, 1, text_wh);
+        draw_thick_line(r, l_floor_x1 - 10, bot_y - 8, l_floor_x1 + 2, bot_y - 8, 2, text_wh);
+        draw_text(r, ui->use_mph ? "mph" : "km/h", l_floor_x1 - 65, bot_y + 2, 1, text_dim);
+
+        /* Left Stacked Speed + Upper Left Vitals */
+        char min_l_buf[48];
+        snprintf(min_l_buf, sizeof(min_l_buf), "GEAR %c  |  %.0f RPM", gear_ch, state->engine_rpm);
+        draw_text(r, min_l_buf, 16, content_y + 48, 1, bmw_cyan);
+        snprintf(min_l_buf, sizeof(min_l_buf), "H2O %.0f°C  OIL %.0f°C", state->water_temp, state->oil_temp);
+        draw_text(r, min_l_buf, 16, content_y + 66, 1, text_dim);
+        snprintf(min_l_buf, sizeof(min_l_buf), "SUSP %.0f/%.0fMM", state->susp_height[0], state->susp_height[2]);
+        draw_text(r, min_l_buf, 16, content_y + 84, 1, text_wh);
+        snprintf(min_l_buf, sizeof(min_l_buf), "ERS %+.0fKW", state->energy_recovery_kw);
+        draw_text(r, min_l_buf, 16, content_y + 102, 1, bmw_cyan);
+        snprintf(min_l_buf, sizeof(min_l_buf), "STEER %+.1f°", state->steer_angle_fl_deg);
+        draw_text(r, min_l_buf, 16, content_y + 120, 1, text_dim);
+
+        int spd_cx = 180;
+        int spd_y = content_y + 245;
+        char sec_spd_min[32];
+        snprintf(sec_spd_min, sizeof(sec_spd_min), "%d %s", spd_sec, ui->use_mph ? "km/h" : "mph");
+        draw_text_centered(r, sec_spd_min, spd_cx, spd_y - 28, 1, text_dim);
+
+        int digits = (spd_pri >= 100) ? 3 : ((spd_pri >= 10) ? 2 : 1);
+        draw_modern_number_centered(r, spd_pri, digits, false, spd_cx, spd_y, 42, 76, 9, 8, text_wh);
+        draw_text(r, ui->use_mph ? "mph" : "km/h", spd_cx + 42, spd_y + 55, 1, text_dim);
+
+        /* PANORAMIC 3D MAP CANVAS on True OLED Pitch Black (spanning across x: 330 to 1230) */
+        int map_x = 330;
+        int map_w = 900;
+        fill_rect(r, map_x, content_y + 36, map_w, content_h - 90, rgba(0, 0, 0, 255));
+        draw_rect(r, map_x, content_y + 36, map_w, content_h - 90, 1, rgba(20, 45, 80, 150));
+
+        /* Main Avenue */
+        draw_thick_line(r, map_x + 190, content_y + content_h - 60, map_x + 130, content_y + 36, 7, rgba(25, 42, 68, 255));
+        draw_thick_line(r, map_x + 190, content_y + content_h - 60, map_x + 130, content_y + 36, 3, rgba(235, 242, 255, 220));
+
+        /* Cross boulevards */
+        draw_thick_line(r, map_x + 15, content_y + 130, map_x + map_w - 15, content_y + 130, 3, rgba(160, 190, 225, 190));
+        draw_thick_line(r, map_x + 15, content_y + 245, map_x + map_w - 15, content_y + 245, 4, rgba(210, 230, 255, 220));
+        draw_thick_line(r, map_x + 15, content_y + 375, map_x + map_w - 15, content_y + 375, 3, rgba(160, 190, 225, 190));
+
+        /* North-South streets */
+        for (int gx = map_x + 80; gx <= map_x + map_w - 60; gx += 85) {
+            draw_thick_line(r, gx, content_y + 36, gx + 15, content_y + content_h - 60, 2, rgba(135, 170, 210, 180));
+        }
+
+        /* Diagonal residential streets */
+        draw_thick_line(r, map_x + 240, content_y + 36, map_x + 480, content_y + 245, 2, rgba(110, 145, 185, 160));
+        draw_thick_line(r, map_x + 480, content_y + 245, map_x + 720, content_y + 435, 2, rgba(110, 145, 185, 160));
+        draw_thick_line(r, map_x + 360, content_y + 245, map_x + 540, content_y + 415, 2, rgba(110, 145, 185, 160));
+
+        /* Golden Navigation Cursor */
+        int nav_cx = map_x + 230;
+        int nav_cy = content_y + 340;
+        draw_thick_line(r, nav_cx, nav_cy - 14, nav_cx - 10, nav_cy + 10, 3, gold);
+        draw_thick_line(r, nav_cx, nav_cy - 14, nav_cx + 10, nav_cy + 10, 3, gold);
+        draw_thick_line(r, nav_cx - 10, nav_cy + 10, nav_cx, nav_cy + 3, 2, gold);
+        draw_thick_line(r, nav_cx + 10, nav_cy + 10, nav_cx, nav_cy + 3, 2, gold);
+
+        draw_text(r, "READY", map_x + map_w - 95, bot_y - 12, 2, text_wh);
+
+        /* Top Motorsport Widget on True OLED Black */
+        fill_rect(r, map_x + 30, content_y + 42, map_w - 60, 26, rgba(0, 0, 0, 245));
+        draw_rect(r, map_x + 30, content_y + 42, map_w - 60, 26, 1, rgba(0, 180, 255, 110));
+        char min_top[256];
+        snprintf(min_top, sizeof(min_top), "%s   |   LAP %d/%d   |   POS %d/%d   |   BOOST %+.2f BAR   |   DELTA %+.3fs",
+                 state->circuit_name[0] ? state->circuit_name : "SUZUKA CIRCUIT",
+                 state->current_lap > 0 ? state->current_lap : 1,
+                 state->total_laps > 0 ? state->total_laps : 10,
+                 state->race_position > 0 ? state->race_position : 2,
+                 state->total_cars > 0 ? state->total_cars : 16,
+                 state->turbo_bar,
+                 (float)state->delta_ms / 1000.0f);
+        draw_text_centered(r, min_top, map_x + map_w / 2, content_y + 49, 1, text_wh);
+
+        /* Bottom-Left Map Telemetry Overlay Pill on True OLED Black */
+        fill_rect(r, map_x + 80, bot_y - 28, map_w - 200, 24, rgba(0, 0, 0, 245));
+        draw_rect(r, map_x + 80, bot_y - 28, map_w - 200, 24, 1, rgba(0, 180, 255, 110));
+        char s1_m[16], s2_m[16], s3_m[16];
+        format_sector_time(state->cur_sector_ms[0], s1_m, sizeof(s1_m));
+        format_sector_time(state->cur_sector_ms[1], s2_m, sizeof(s2_m));
+        format_sector_time(state->cur_sector_ms[2], s3_m, sizeof(s3_m));
+        snprintf(min_top, sizeof(min_top), "S1 %s  S2 %s  S3 %s  |  THR %.0f%% BRK %.0f%%  |  TIRES %.0f°/%.0f°/%.0f°/%.0f°",
+                 s1_m, s2_m, s3_m, state->throttle_pct, state->brake_pct,
+                 state->tire_temp[0], state->tire_temp[1], state->tire_temp[2], state->tire_temp[3]);
+        draw_text_centered(r, min_top, map_x + 80 + (map_w - 200) / 2, bot_y - 23, 1, bmw_cyan);
     }
 
-    fill_rect(r, SCREEN_W - 390, l_bot_y - 48, 86, 24, mode_bg);
-    draw_rect(r, SCREEN_W - 390, l_bot_y - 48, 86, 24, 1, mode_color);
-    draw_text_centered(r, mode_name, SCREEN_W - 347, l_bot_y - 43, 1, mode_color);
+    /* =========================================================================
+     * COMMON AUTHENTIC LEFT WARNING ICONS & BOTTOM STATUS ROW (Across All Photos)
+     * ========================================================================= */
+    /* 1. Far Left Warning Light Icons */
+    draw_icon_headlight(r, 16, content_y + 325, rgba(40, 225, 80, 255));
+    draw_icon_headlight(r, 16, content_y + 355, rgba(40, 225, 80, 255));
+    draw_text(r, "A", 26, content_y + 350, 1, rgba(40, 225, 80, 255));
+    fill_circle(r, 20, content_y + 400, 10, rgba(235, 30, 30, 255));
+    fill_circle(r, 20, content_y + 400, 8, rgba(0, 0, 0, 255));
+    draw_text_centered(r, "P", 20, content_y + 394, 1, rgba(235, 30, 30, 255));
 
-    /* ================= BOTTOM STATUS ROW ================= */
-    int b_row_y = content_y + content_h - 32;
+    /* 2. Bottom Status Row (y = content_y + content_h - 22) */
+    int stat_y = content_y + content_h - 22;
 
-    /* Left: Dynamic Fuel / Energy range and bar */
-    int fuel_range = (int)(state->fuel_pct * (ui->use_mph ? 4.3f : 7.0f));
-    char bmw_f_buf[24];
-    snprintf(bmw_f_buf, sizeof(bmw_f_buf), "%d %s", fuel_range, ui->use_mph ? "mi" : "km");
-    draw_icon_fuel_pump(r, 115, b_row_y - 12, text_wh);
-    draw_text(r, bmw_f_buf, 132, b_row_y - 12, 2, text_wh);
-    fill_rect(r, 130, b_row_y + 8, 120, 6, rgba(30, 45, 65, 255));
-    int bmw_f_bar = (int)((state->fuel_pct / 100.0f) * 120.0f);
-    if (bmw_f_bar > 120) bmw_f_bar = 120;
-    if (bmw_f_bar < 0) bmw_f_bar = 0;
-    fill_rect(r, 130, b_row_y + 8, bmw_f_bar, 6, (state->fuel_pct < 15.0f) ? rgba(255, 180, 0, 255) : text_wh);
-    draw_text(r, "0", 118, b_row_y + 5, 1, text_dim);
-    draw_text(r, "1", 255, b_row_y + 5, 1, text_dim);
+    /* Left: Battery + SOC % + Clock */
+    int battery_soc = (state->battery_soc_pct > 0.0f) ? (int)state->battery_soc_pct : 71;
+    draw_vector_battery(r, 65, stat_y + 2, 22, 12, battery_soc, text_wh, bmw_cyan);
+    char batt_str[16];
+    snprintf(batt_str, sizeof(batt_str), "%d%%", battery_soc);
+    draw_text(r, batt_str, 94, stat_y + 2, 1, text_wh);
 
-    /* Clock */
-    draw_text_centered(r, "10:49", 320, b_row_y - 2, 2, text_wh);
+    char clock_str[16];
+    snprintf(clock_str, sizeof(clock_str), "12:22");
+    draw_text(r, clock_str, 200, stat_y, 2, text_wh);
 
-    /* Speed Limit Sign: Red Circle [ 50 ] */
-    draw_speed_limit_sign(r, 495, b_row_y + 4, 50, false);
+    /* Center: Speed limit sign (20) + Seatbelt warning + Top-down BMW silhouette */
+    draw_speed_limit_sign(r, 480, stat_y + 6, 20, false);
+    draw_icon_seatbelt(r, 580, stat_y + 5, m_red);
+    draw_topdown_car(r, 620, stat_y + 6, rgba(160, 185, 215, 255));
 
-    /* Overhead car chassis icon + Seatbelt */
-    draw_icon_seatbelt(r, 605, b_row_y + 4, rgba(235, 45, 55, 255));
-    draw_icon_car_topdown(r, 645, b_row_y + 4, 26, 32, rgba(40, 75, 120, 255), rgba(255, 160, 0, 255), true, true);
+    /* Right: Outside Ambient Temp + Electric Range with Plug icon */
+    float temp_c = 28.5f;
+    char temp_str[16];
+    snprintf(temp_str, sizeof(temp_str), "+%.1f °C", temp_c);
+    draw_text(r, temp_str, 840, stat_y, 2, text_wh);
 
-    /* Outside Temperature */
-    char temp_buf[24];
-    snprintf(temp_buf, sizeof(temp_buf), "%s", ui->use_mph ? "+ 66 °F" : "+ 19.0 °C");
-    draw_text(r, temp_buf, 930, b_row_y - 2, 2, text_wh);
-
-    /* Right: Dynamic High-Voltage Electric battery range and bar */
-    int batt_range = (int)((state->fuel_pct > 0.0f ? state->fuel_pct : 80.0f) * (ui->use_mph ? 0.35f : 0.55f));
-    char bmw_b_buf[24];
-    snprintf(bmw_b_buf, sizeof(bmw_b_buf), "%d %s", batt_range, ui->use_mph ? "mi" : "km");
-    draw_icon_battery(r, 1058, b_row_y - 12, 16, 11, state->fuel_pct / 100.0f, bmw_cyan);
-    draw_text(r, bmw_b_buf, 1080, b_row_y - 12, 2, text_wh);
-    fill_rect(r, 1080, b_row_y + 8, 120, 6, rgba(30, 45, 65, 255));
-    int bmw_b_bar = (int)((state->fuel_pct / 100.0f) * 120.0f);
-    if (bmw_b_bar > 120) bmw_b_bar = 120;
-    if (bmw_b_bar < 0) bmw_b_bar = 0;
-    fill_rect(r, 1080, b_row_y + 8, bmw_b_bar, 6, bmw_cyan);
-    draw_text(r, "0", 1068, b_row_y + 5, 1, text_dim);
-    draw_text(r, "1", 1205, b_row_y + 5, 1, text_dim);
+    draw_icon_ev_plug(r, 1045, stat_y + 8, text_wh);
+    int rng_km = (int)(274.0f + (state->fuel_capacity > 0 ? (state->fuel_level / state->fuel_capacity * 100.0f) : 12.0f));
+    char rng_str[24];
+    snprintf(rng_str, sizeof(rng_str), "%dkm", rng_km);
+    draw_text(r, rng_str, 1060, stat_y, 2, text_wh);
 }
+
+
+
+
+
+
+
+
 
 /* 3. AUDI SPORT RS VIRTUAL COCKPIT (RS Runway Tachometer, Dual Power/Torque Pods, Boost Bar) */
 static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, const hud_ui_state_t *ui, uint32_t now_ms, int content_y, int content_h) {
@@ -2465,13 +3301,36 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     draw_text(r, "[T]  ^", 725, top_y + 28, 2, text_dim);
     draw_line(r, 390, top_y + 54, 930, top_y + 54, rgba(40, 55, 80, 255));
 
-    /* ================= LEFT SIDE: Date & Time, Oil Temp ================= */
+    /* ================= LEFT SIDE: Audi RS Lap Timer, Date & Time, Oil Temp, TPMS ================= */
     int left_x = 60;
 
-    draw_text(r, "Date & time", left_x + 90, mid_y - 120, 2, text_dim);
-    draw_text(r, "10:43 AM", left_x + 90, mid_y - 85, 4, text_wh);
-    draw_text(r, "Wednesday", left_x + 90, mid_y - 48, 2, text_wh);
-    draw_text(r, "11.3.2026", left_x + 90, mid_y - 26, 2, text_wh);
+    /* Upper-Left: Audi RS Lap Timer & Sector Split Card on True OLED Black */
+    draw_panel(r, left_x + 30, content_y + 12, 265, 118, rgba(0, 0, 0, 255), rgba(235, 30, 45, 180), 8);
+    draw_text(r, "RS LAP TIMER", left_x + 42, content_y + 20, 1, audi_red);
+    if (state->car_category[0]) {
+        draw_text_right(r, state->car_category, left_x + 282, content_y + 20, 1, audi_cyan);
+    }
+    char a_cur[24], a_bst[24], a_s1[16], a_s2[16], a_s3[16], a_tbuf[96];
+    format_lap_time(state->current_lap_ms, a_cur, sizeof(a_cur));
+    format_lap_time(state->best_lap_ms, a_bst, sizeof(a_bst));
+    format_sector_time(state->cur_sector_ms[0], a_s1, sizeof(a_s1));
+    format_sector_time(state->cur_sector_ms[1], a_s2, sizeof(a_s2));
+    format_sector_time(state->cur_sector_ms[2], a_s3, sizeof(a_s3));
+    snprintf(a_tbuf, sizeof(a_tbuf), "CURR %s", a_cur);
+    draw_text(r, a_tbuf, left_x + 42, content_y + 38, 2, text_wh);
+    snprintf(a_tbuf, sizeof(a_tbuf), "BEST %s  (%+.2fs)", a_bst, (float)state->delta_ms / 1000.0f);
+    draw_text(r, a_tbuf, left_x + 42, content_y + 62, 1, (state->delta_ms <= 0) ? audi_green : audi_red);
+    snprintf(a_tbuf, sizeof(a_tbuf), "S1 %s | S2 %s | S3 %s", a_s1, a_s2, a_s3);
+    draw_text(r, a_tbuf, left_x + 42, content_y + 82, 1, audi_cyan);
+    snprintf(a_tbuf, sizeof(a_tbuf), "FUEL %.1f%% (%.1f LAPS)  TOP %.0fK",
+             state->fuel_pct, (state->fuel_burn_per_lap > 0.1f) ? (state->fuel_pct / state->fuel_burn_per_lap) : 21.2f,
+             state->session_top_speed_kmh);
+    draw_text(r, a_tbuf, left_x + 42, content_y + 102, 1, text_dim);
+
+    draw_text(r, "Date & time", left_x + 90, mid_y - 112, 2, text_dim);
+    draw_text(r, "10:43 AM", left_x + 90, mid_y - 80, 4, text_wh);
+    draw_text(r, "Wednesday", left_x + 90, mid_y - 44, 2, text_wh);
+    draw_text(r, "11.3.2026", left_x + 90, mid_y - 22, 2, text_wh);
 
     /* Dynamic Oil Temperature Bar */
     int oil_y = mid_y + 90;
@@ -2486,8 +3345,8 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     snprintf(o_buf, sizeof(o_buf), "OIL %.0f°C", o_temp);
     draw_text(r, o_buf, left_x + 100, oil_y + 10, 2, text_wh);
 
-    /* Audi Sport RS TPMS Tyre Card (4-Wheel Temperatures & Contact Patches) */
-    draw_panel(r, left_x + 50, oil_y + 34, 220, 78, rgba(8, 14, 24, 230), rgba(35, 55, 80, 255), 8);
+    /* Audi Sport RS TPMS Tyre Card (4-Wheel Temperatures & Contact Patches on True OLED Black) */
+    draw_panel(r, left_x + 50, oil_y + 34, 220, 78, rgba(0, 0, 0, 255), rgba(35, 55, 80, 255), 8);
     draw_text(r, "SPORT RS TYRES", left_x + 62, oil_y + 42, 1, audi_red);
     char rs_tbuf[32];
     char sc_fl = (state->surface_type[0] != 0) ? (char)state->surface_type[0] : 'T';
@@ -2585,15 +3444,37 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     /* Lane Assist Icon */
     draw_icon_lane_assist(r, center_disp_x + 130, mid_y + 72, audi_green);
 
-    /* ================= RIGHT SIDE: Dual Circular Pods (Power & Torque) ================= */
+    /* ================= RIGHT SIDE: Audi Sport G-Meter & Dual Circular Pods (Power & Torque) ================= */
     int pod1_cx = 970;
     int pod2_cx = 1110;
     int pod_cy = mid_y + 15;
     int pod_rad = 54;
 
-    /* Pod 1: Power % */
+    /* Upper-Right: Audi Sport G-Meter & Chassis Dynamics Card on True OLED Black */
+    draw_panel(r, pod1_cx - 45, content_y + 12, 265, 132, rgba(0, 0, 0, 255), rgba(0, 220, 245, 160), 8);
+    draw_text(r, "AUDI SPORT G-METER", pod1_cx - 33, content_y + 20, 1, audi_cyan);
+    int ag_cx = pod1_cx - 8, ag_cy = content_y + 66, ag_r = 22;
+    draw_circle(r, ag_cx, ag_cy, ag_r, 1, rgba(60, 85, 115, 255));
+    draw_line(r, ag_cx - ag_r, ag_cy, ag_cx + ag_r, ag_cy, rgba(45, 65, 95, 255));
+    draw_line(r, ag_cx, ag_cy - ag_r, ag_cx, ag_cy + ag_r, rgba(45, 65, 95, 255));
+    fill_circle(r, ag_cx + (int)(state->g_lat * 11.0f), ag_cy - (int)(state->g_lon * 11.0f), 4, audi_red);
+
+    snprintf(a_tbuf, sizeof(a_tbuf), "LAT %+.2fG  LON %+.2fG", state->g_lat, state->g_lon);
+    draw_text(r, a_tbuf, pod1_cx + 22, content_y + 42, 1, text_wh);
+    snprintf(a_tbuf, sizeof(a_tbuf), "STEER %+.1fD  RH %.0fMM", state->steer_angle_fl_deg, state->body_height);
+    draw_text(r, a_tbuf, pod1_cx + 22, content_y + 60, 1, audi_cyan);
+    snprintf(a_tbuf, sizeof(a_tbuf), "SUSP %.0f/%.0f/%.0f/%.0fMM",
+             state->susp_height[0], state->susp_height[1],
+             state->susp_height[2], state->susp_height[3]);
+    draw_text(r, a_tbuf, pod1_cx - 33, content_y + 98, 1, text_wh);
+    snprintf(a_tbuf, sizeof(a_tbuf), "AERO %.0f/%.0fKG  WB %.2fM",
+             state->downforce_front_kg, state->downforce_rear_kg,
+             state->wheel_base_m > 0.5f ? state->wheel_base_m : 2.75f);
+    draw_text(r, a_tbuf, pod1_cx - 33, content_y + 116, 1, text_dim);
+
+    /* Pod 1: Power % (True OLED Black interior) */
     draw_text_centered(r, "Power", pod1_cx, pod_cy - pod_rad - 22, 2, text_wh);
-    fill_circle(r, pod1_cx, pod_cy, pod_rad, rgba(6, 14, 24, 255));
+    fill_circle(r, pod1_cx, pod_cy, pod_rad, rgba(0, 0, 0, 255));
     draw_circle(r, pod1_cx, pod_cy, pod_rad, 2, audi_cyan);
     draw_circle(r, pod1_cx, pod_cy, pod_rad - 4, 1, rgba(20, 45, 75, 255));
     draw_text_centered(r, "%", pod1_cx, pod_cy - 24, 2, text_dim);
@@ -2601,9 +3482,9 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     draw_segmented_arc(r, pod1_cx, pod_cy, pod_rad - 6, 4, 120.0f, 420.0f, 16, power_pct / 100.0f, audi_red, rgba(0, 0, 0, 0));
     fill_rect(r, pod1_cx - 2, pod_cy + pod_rad - 8, 4, 6, audi_red);
 
-    /* Pod 2: Torque % */
+    /* Pod 2: Torque % (True OLED Black interior) */
     draw_text_centered(r, "Torque", pod2_cx, pod_cy - pod_rad - 22, 2, text_wh);
-    fill_circle(r, pod2_cx, pod_cy, pod_rad, rgba(6, 14, 24, 255));
+    fill_circle(r, pod2_cx, pod_cy, pod_rad, rgba(0, 0, 0, 255));
     draw_circle(r, pod2_cx, pod_cy, pod_rad, 2, audi_cyan);
     draw_circle(r, pod2_cx, pod_cy, pod_rad - 4, 1, rgba(20, 45, 75, 255));
     draw_text_centered(r, "%", pod2_cx, pod_cy - 24, 2, text_dim);
@@ -2621,8 +3502,8 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     fill_rect(r, bst_x, bst_y + 16, bst_w, 4, rgba(30, 45, 65, 255));
     fill_rect(r, bst_x, bst_y + 16, (int)(bst_w * boost_pct), 4, audi_red);
 
-    /* RS Performance & Quattro e-tron AWD Panel */
-    draw_panel(r, bst_x, bst_y + 28, bst_w, 48, rgba(8, 14, 24, 230), rgba(35, 55, 80, 255), 8);
+    /* RS Performance & Quattro e-tron AWD Panel on True OLED Black */
+    draw_panel(r, bst_x, bst_y + 28, bst_w, 48, rgba(0, 0, 0, 255), rgba(35, 55, 80, 255), 8);
     draw_text(r, "RS QUATTRO e-tron", bst_x + 12, bst_y + 34, 1, audi_red);
     char rs_perf[48];
     if (state->has_packet_tilde || fabsf(state->energy_recovery_kw) > 1.0f) {
@@ -2632,10 +3513,32 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     }
     draw_text(r, rs_perf, bst_x + 12, bst_y + 54, 1, text_wh);
 
-    /* Center Lap & Pos Info under Dynamic mode */
-    char a_lap[48];
-    snprintf(a_lap, sizeof(a_lap), "LAP %d/%d   P%d", state->current_lap > 0 ? state->current_lap : 5, state->total_laps > 0 ? state->total_laps : 15, state->race_position > 0 ? state->race_position : 2);
-    draw_text_centered(r, a_lap, center_disp_x, mid_y + 115, 1, text_dim);
+    /* Center Lap & Pos Info + Audi RS Pedal & Drivetrain Strip under Dynamic mode */
+    char a_lap[64];
+    snprintf(a_lap, sizeof(a_lap), "LAP %d/%d   P%d/%d   |   %.0f RPM",
+             state->current_lap > 0 ? state->current_lap : 5,
+             state->total_laps > 0 ? state->total_laps : 15,
+             state->race_position > 0 ? state->race_position : 2,
+             state->total_cars > 0 ? state->total_cars : 20,
+             state->engine_rpm);
+    draw_text_centered(r, a_lap, center_disp_x, mid_y + 114, 1, audi_cyan);
+
+    draw_panel(r, center_disp_x - 210, mid_y + 132, 420, 62, rgba(0, 0, 0, 255), rgba(35, 55, 80, 255), 8);
+    draw_text(r, "THR", center_disp_x - 196, mid_y + 140, 1, audi_green);
+    fill_rect(r, center_disp_x - 164, mid_y + 141, 145, 8, rgba(16, 26, 38, 255));
+    fill_rect(r, center_disp_x - 164, mid_y + 141, (int)(145.0f * state->throttle_pct / 100.0f), 8, audi_green);
+
+    draw_text(r, "BRK", center_disp_x + 10, mid_y + 140, 1, audi_red);
+    fill_rect(r, center_disp_x + 42, mid_y + 141, 145, 8, rgba(28, 16, 22, 255));
+    fill_rect(r, center_disp_x + 42, mid_y + 141, (int)(145.0f * state->brake_pct / 100.0f), 8, audi_red);
+
+    snprintf(a_lap, sizeof(a_lap), "H2O %.0f°C   OIL P %.1fB   CLUTCH %.0f%%   GBX %.0f RPM",
+             state->water_temp, state->oil_pressure, (100.0f - state->clutch_pct), state->engine_rpm);
+    draw_text_centered(r, a_lap, center_disp_x, mid_y + 158, 1, text_wh);
+    snprintf(a_lap, sizeof(a_lap), "SLIP FL %.0f%% FR %.0f%% RL %.0f%% RR %.0f%%   |   BOOST %+.2f BAR",
+             state->tire_slip_ratio[0] * 100.0f, state->tire_slip_ratio[1] * 100.0f,
+             state->tire_slip_ratio[2] * 100.0f, state->tire_slip_ratio[3] * 100.0f, state->turbo_bar);
+    draw_text_centered(r, a_lap, center_disp_x, mid_y + 176, 1, text_dim);
 
     /* ================= BOTTOM STATUS BAR ================= */
     int bot_y = content_y + content_h - 32;
@@ -2660,208 +3563,246 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     draw_text(r, a_temp_buf, 680, bot_y + 18, 2, text_wh);
 }
 
-/* 4. VOLVO EX90 / GOOGLE BUILT-IN PANORAMIC CLUSTER (Full-Width Map, Floating Glass Pods, Sweeping Arcs) */
+/* 4. VOLVO EX90 / POLESTAR PANORAMIC CLUSTER (Full-Screen Google Maps Night on OLED Black, Dual Floating Glass Pods) */
 static void render_ev_volvo_ex(SDL_Renderer *r, const gt7_state_t *state, const hud_ui_state_t *ui, uint32_t now_ms, int content_y, int content_h) {
     (void)now_ms;
-    rgba_t volvo_cyan = rgba(0, 210, 255, 255);
-    rgba_t volvo_green = rgba(50, 220, 130, 255);
-    rgba_t text_dim   = rgba(140, 160, 185, 255);
-    rgba_t text_wh    = rgba(245, 250, 255, 255);
+    rgba_t volvo_cyan  = rgba(0, 210, 240, 255);
+    rgba_t volvo_green = rgba(45, 225, 115, 255);
+    rgba_t volvo_gold  = rgba(245, 185, 25, 255);
+    rgba_t text_dim    = rgba(145, 165, 190, 255);
+    rgba_t text_wh     = rgba(245, 250, 255, 255);
 
-    float speed = ui->use_mph ? state->speed_mph : state->speed_kmh;
-    float max_spd = ui->use_mph ? 140.0f : 200.0f;
-    float spd_frac = speed / max_spd;
-    if (spd_frac > 1.0f) spd_frac = 1.0f;
+    /* --- FULL-SCREEN GOOGLE MAPS NIGHT-MODE PERSPECTIVE CANVAS ON TRUE OLED BLACK --- */
+    fill_rect(r, 0, content_y, 1280, content_h, rgba(0, 0, 0, 255));
 
-    float power_pct = state->throttle_pct;
-    float charge_pct = state->brake_pct;
-
-    int cy = content_y + content_h / 2;
-
-    /* ================= 100% FULL-SCREEN PANORAMIC 3D GOOGLE MAPS ================= */
-    int map_x = 0;
-    int map_w = SCREEN_W;
-    int map_y = content_y;
-    int map_h = content_h;
-
-    fill_rect(r, map_x, map_y, map_w, map_h, rgba(5, 12, 28, 255));
-
-    /* Perspective Road Grid spanning full 1280px screen */
-    for (int gx = -100; gx <= SCREEN_W + 100; gx += 55) {
-        int target_x = SCREEN_W / 2 + (gx - SCREEN_W / 2) / 3;
-        draw_line(r, gx, map_y + map_h, target_x, map_y + 10, rgba(14, 32, 65, 255));
-    }
-    for (int gy = 0; gy < 10; ++gy) {
-        float f = (float)gy / 9.0f;
-        int py = map_y + map_h - (int)(powf(f, 1.35f) * (map_h - 15));
-        draw_line(r, 0, py, SCREEN_W, py, rgba(18, 42, 80, 255));
+    /* Building lots / neighborhood zoning blocks */
+    static const SDL_Rect lot_blocks[] = {
+        { 410, 160, 110, 75 },
+        { 540, 170, 120, 80 },
+        { 680, 165, 115, 75 },
+        { 400, 380, 130, 110 },
+        { 680, 390, 140, 100 }
+    };
+    for (size_t b = 0; b < sizeof(lot_blocks) / sizeof(lot_blocks[0]); b++) {
+        fill_rect(r, lot_blocks[b].x, content_y + lot_blocks[b].y - 65, lot_blocks[b].w, lot_blocks[b].h, rgba(12, 22, 38, 175));
     }
 
-    /* City Street Names (Google Maps authentic look) */
-    draw_text(r, "Granville St", 290, cy + 90, 1, rgba(60, 95, 145, 255));
-    draw_text(r, "Oak St", 460, cy + 30, 1, rgba(60, 95, 145, 255));
-    draw_text(r, "W 49th Ave", 730, cy + 50, 1, rgba(60, 95, 145, 255));
-    draw_text(r, "W 57th Ave", 840, cy + 110, 1, rgba(60, 95, 145, 255));
+    /* Cyan "Devonshire park" polygon */
+    int park_x = 550, park_y = content_y + 270, park_w = 150, park_h = 100;
+    fill_rect(r, park_x, park_y, park_w, park_h, rgba(0, 145, 190, 220));
+    draw_rect(r, park_x, park_y, park_w, park_h, 1, rgba(80, 220, 255, 255));
+    draw_text_centered(r, "Devonshire", park_x + park_w / 2, park_y + 35, 1, text_wh);
+    draw_text_centered(r, "park", park_x + park_w / 2, park_y + 50, 1, text_wh);
 
-    /* Cyan Highlighted Lake / Park Polygon (Devonshire Park) */
-    fill_rect(r, 610, cy - 30, 105, 80, rgba(0, 140, 190, 210));
-    draw_rect(r, 610, cy - 30, 105, 80, 1, volvo_cyan);
-    draw_text_centered(r, "Devonshire", 662, cy - 4, 1, text_wh);
-    draw_text_centered(r, "park", 662, cy + 12, 1, text_wh);
-
-    /* Real GT7 Circuit Geometry Overlaid in Center between Pods */
-    draw_track_map_geometry(r, state, 400, map_y + 30, SCREEN_W - 800, map_h - 60, 3, 2, false);
-
-    /* Blue Navigation Arrow Cursor */
-    int nav_x = 615;
-    int nav_y = map_y + map_h - 90;
-    fill_circle(r, nav_x, nav_y, 18, rgba(0, 120, 255, 220));
-    draw_thick_line(r, nav_x, nav_y - 10, nav_x - 7, nav_y + 7, 3, text_wh);
-    draw_thick_line(r, nav_x, nav_y - 10, nav_x + 7, nav_y + 7, 3, text_wh);
-    draw_thick_line(r, nav_x - 7, nav_y + 7, nav_x, nav_y + 3, 2, text_wh);
-    draw_thick_line(r, nav_x + 7, nav_y + 7, nav_x, nav_y + 3, 2, text_wh);
-
-    draw_text(r, "Google", 760, map_y + map_h - 85, 2, rgba(180, 200, 225, 220));
-
-    /* ================= LEFT FLOATING POD & SPEEDOMETER ARC ================= */
-    int l_pod_w = 210;
-    int l_pod_h = 240;
-    int l_pod_x = 160;
-    int l_pod_y = cy - l_pod_h / 2;
-
-    /* Left Outer Sweeping Speedometer Arc (hugging left margin) */
-    int l_arc_cx = -35;
-    int l_arc_rad = 195;
-    draw_segmented_arc(r, l_arc_cx, cy, l_arc_rad, 5, -55.0f, 55.0f, 24, 1.0f, rgba(35, 50, 75, 255), rgba(0, 0, 0, 0));
-    if (spd_frac > 0.02f) {
-        float lit_ang = 55.0f - spd_frac * 110.0f;
-        draw_segmented_arc(r, l_arc_cx, cy, l_arc_rad, 7, lit_ang, 55.0f, 24, 1.0f, text_wh, rgba(0, 0, 0, 0));
+    /* Dense curved residential streets with perspective fan */
+    for (int off = -240; off <= 320; off += 45) {
+        int x_top = 640 + off / 3;
+        int x_bot = 640 + off * 2;
+        draw_thick_line(r, x_top, content_y + 10, x_bot, content_y + content_h - 20, 1, rgba(32, 60, 105, 210));
     }
 
-    /* Speed Ticks and Numbers: 200 (top) down to 0 (bottom) */
-    static const int volvo_spds[8] = {200, 180, 140, 100, 60, 40, 20, 0};
-    for (int i = 0; i < 8; ++i) {
-        float deg = -50.0f + (float)i * (100.0f / 7.0f);
-        float rad = deg * 3.14159265f / 180.0f;
-        int x_in  = l_arc_cx + (int)((l_arc_rad - 12) * cosf(rad));
-        int y_in  = cy + (int)((l_arc_rad - 12) * sinf(rad));
-        int x_out = l_arc_cx + (int)((l_arc_rad + 2) * cosf(rad));
-        int y_out = cy + (int)((l_arc_rad + 2) * sinf(rad));
-        draw_thick_line(r, x_in, y_in, x_out, y_out, (i % 2 == 0) ? 3 : 1, text_wh);
-
-        int tx = l_arc_cx + (int)((l_arc_rad - 24) * cosf(rad));
-        int ty = cy + (int)((l_arc_rad - 24) * sinf(rad));
-        char sbuf[8];
-        snprintf(sbuf, sizeof(sbuf), "%d", volvo_spds[i]);
-        draw_text_right(r, sbuf, tx, ty - 6, 1, text_wh);
+    /* Curving cross-arteries */
+    for (int cy = 90; cy < content_h - 20; cy += 65) {
+        draw_thick_line(r, 60, content_y + cy, 1220, content_y + cy + 15, 1, rgba(32, 60, 105, 210));
     }
 
-    /* Left Glass Pod */
-    draw_panel(r, l_pod_x, l_pod_y, l_pod_w, l_pod_h, rgba(10, 18, 30, 235), rgba(35, 55, 85, 255), 16);
+    /* Street name labels positioned outside pods */
+    draw_text(r, "Oak St", 470, content_y + 240, 1, rgba(160, 185, 215, 190));
+    draw_text(r, "W 49th Ave", 720, content_y + 240, 1, rgba(160, 185, 215, 190));
+    draw_text(r, "Granville St", 430, content_y + 440, 1, rgba(160, 185, 215, 190));
+    draw_text(r, "W 57th Ave", 730, content_y + 440, 1, rgba(160, 185, 215, 190));
 
-    /* Speed Limit Sign: White rounded square [ 20 ] */
-    fill_rect(r, l_pod_x + 16, l_pod_y + 88, 36, 44, rgba(245, 250, 255, 255));
-    draw_rect(r, l_pod_x + 16, l_pod_y + 88, 36, 44, 2, rgba(20, 20, 20, 255));
-    draw_text_centered(r, "20", l_pod_x + 34, l_pod_y + 98, 3, rgba(20, 20, 20, 255));
+    /* Blue navigation circle puck */
+    int puck_x = 610, puck_y = content_y + 450;
+    fill_circle(r, puck_x, puck_y, 16, rgba(0, 125, 255, 255));
+    draw_circle(r, puck_x, puck_y, 16, 2, rgba(255, 255, 255, 255));
+    draw_thick_line(r, puck_x, puck_y - 8, puck_x - 5, puck_y + 6, 2, text_wh);
+    draw_thick_line(r, puck_x, puck_y - 8, puck_x + 5, puck_y + 6, 2, text_wh);
+    draw_thick_line(r, puck_x - 5, puck_y + 6, puck_x, puck_y + 2, 2, text_wh);
+    draw_thick_line(r, puck_x + 5, puck_y + 6, puck_x, puck_y + 2, 2, text_wh);
 
-    /* Large Modern Digital Speed */
-    int ispd = (int)roundf(speed);
-    int spd_cx = l_pod_x + 125;
-    draw_modern_number_centered(r, ispd, 1, false, spd_cx, l_pod_y + 75, 36, 58, 8, 7, text_wh);
-    draw_text_centered(r, ui->use_mph ? "mph" : "km/h", spd_cx, l_pod_y + 144, 2, text_dim);
+    /* Google Logo */
+    draw_text(r, "Google", 740, content_y + 510, 2, rgba(180, 200, 225, 180));
 
-    /* ================= RIGHT FLOATING POD & POWER/CHARGE ARC ================= */
-    int r_pod_w = 210;
-    int r_pod_h = 240;
-    int r_pod_x = SCREEN_W - 160 - r_pod_w;
-    int r_pod_y = cy - r_pod_h / 2;
+    /* --- SWEEPING OUTER BEZEL GAUGE ARCS --- */
+    int arc_cy = content_y + 315;
+    static const int l_speeds[] = { 200, 180, 140, 100, 60, 40, 20, 0 };
+    int cur_spd = ui->use_mph ? (int)(state->speed_mph + 0.5f) : (int)(state->speed_kmh + 0.5f);
+    if (cur_spd < 0) cur_spd = 0;
 
-    /* Right Outer Sweeping Power Arc */
-    int r_arc_cx = SCREEN_W + 35;
-    int r_arc_rad = 195;
-    draw_segmented_arc(r, r_arc_cx, cy, r_arc_rad, 5, 125.0f, 235.0f, 24, 1.0f, rgba(35, 50, 75, 255), rgba(0, 0, 0, 0));
-    float pwr_frac = (charge_pct > 2.0f) ? (charge_pct / 100.0f) : (power_pct / 100.0f);
-    if (pwr_frac > 0.02f) {
-        float lit_ang = 180.0f + ((charge_pct > 2.0f) ? -pwr_frac * 50.0f : pwr_frac * 50.0f);
-        if (charge_pct > 2.0f) {
-            draw_segmented_arc(r, r_arc_cx, cy, r_arc_rad, 7, lit_ang, 180.0f, 16, 1.0f, volvo_green, rgba(0, 0, 0, 0));
-        } else {
-            draw_segmented_arc(r, r_arc_cx, cy, r_arc_rad, 7, 180.0f, lit_ang, 16, 1.0f, text_wh, rgba(0, 0, 0, 0));
-        }
+    for (int i = 0; i < 8; i++) {
+        float theta = -0.80f + (float)i * 0.23f;
+        int tx = (int)(360.0f - 305.0f * cosf(theta));
+        int ty = (int)(arc_cy + 305.0f * sinf(theta));
+        int mark_spd = l_speeds[i];
+        rgba_t tc = (cur_spd >= mark_spd) ? text_wh : rgba(140, 165, 195, 120);
+
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%d", mark_spd);
+        draw_text_right(r, buf, tx - 12, ty - 6, 1, tc);
+        draw_thick_line(r, tx, ty, tx + 14, ty, 3, tc);
     }
 
-    /* Right Glass Pod */
-    draw_panel(r, r_pod_x, r_pod_y, r_pod_w, r_pod_h, rgba(10, 18, 30, 235), rgba(35, 55, 85, 255), 16);
-
-    /* Green READY Badge */
-    draw_text(r, "READY", r_pod_x + 32, r_pod_y + 24, 2, volvo_green);
-
-    /* Dynamic Transmission Gear & PRND Column */
-    bool is_p = (state->speed_kmh < 1.0f && state->current_gear <= 0);
-    bool is_r = (state->current_gear == 0);
-    bool is_n = (state->current_gear == -1);
-    bool is_d = (state->current_gear >= 1);
-    bool is_regen = (state->brake_pct > 12.0f);
-
-    char v_gear_char = is_p ? 'P' : (is_r ? 'R' : (is_n ? 'N' : 'D'));
-    draw_modern_char(r, v_gear_char, r_pod_x + 24, r_pod_y + 68, 36, 56, 7, is_r ? rgba(255, 195, 45, 255) : text_wh);
-
-    if (is_d && state->current_gear > 0) {
-        draw_modern_char(r, '0' + state->current_gear, r_pod_x + 64, r_pod_y + 76, 16, 26, 4, volvo_cyan);
+    /* Right Bezel Arc */
+    for (int i = 0; i < 9; i++) {
+        float theta = -0.80f + (float)i * 0.20f;
+        int tx = (int)(920.0f + 305.0f * cosf(theta));
+        int ty = (int)(arc_cy + 305.0f * sinf(theta));
+        rgba_t tc = (i < 5) ? rgba(180, 205, 230, 200) : volvo_green;
+        draw_thick_line(r, tx - 14, ty, tx, ty, 3, tc);
     }
 
-    draw_text(r, "R", r_pod_x + 88, r_pod_y + 68, 2, is_r ? rgba(255, 195, 45, 255) : text_dim);
-    draw_text(r, "N", r_pod_x + 88, r_pod_y + 86, 2, is_n ? text_wh : text_dim);
-    draw_text(r, "D", r_pod_x + 88, r_pod_y + 104, 2, is_d ? text_wh : text_dim);
+    /* --- PROMINENT DUAL FLOATING PODS ON TRUE OLED BLACK (260x285) --- */
+    int pod_w = 260, pod_h = 285;
+    int pod_y = content_y + 150;
+    int left_pod_x = 115;
+    int right_pod_x = 905;
 
-    /* - B + (Regen One-Pedal Drive Level, lights up green during braking/regen) */
-    draw_text(r, "- B +", r_pod_x + 48, r_pod_y + 130, 2, is_regen ? volvo_green : text_wh);
+    /* Left Glass Pod (True OLED Black with Scandinavian Ice Border) */
+    draw_panel(r, left_pod_x, pod_y, pod_w, pod_h, rgba(0, 0, 0, 255), rgba(85, 140, 195, 190), 12);
 
-    /* Power / Charge Text on Right Side of Pod */
-    draw_text(r, "power", r_pod_x + 145, r_pod_y + 80, 2, (state->throttle_pct > 10.0f) ? text_wh : text_dim);
-    draw_text(r, "charge", r_pod_x + 145, r_pod_y + 115, 2, is_regen ? volvo_green : text_dim);
-    draw_line(r, r_pod_x + 135, r_pod_y + 104, r_pod_x + 195, r_pod_y + 104, text_wh);
+    /* Polestar Engineered Header inside Left Pod */
+    draw_text(r, "POLESTAR ENGINEERED", left_pod_x + 18, pod_y + 14, 1, volvo_gold);
+    char v_buf[96];
+    snprintf(v_buf, sizeof(v_buf), "%.0f RPM  |  %+.2f BAR", state->engine_rpm, state->turbo_bar);
+    draw_text(r, v_buf, left_pod_x + 18, pod_y + 32, 1, volvo_cyan);
 
-    /* ================= TOP STATUS BAR ================= */
-    int t_row_y = content_y + 12;
-    draw_icon_headlight(r, 420, t_row_y + 8, volvo_green);
-    draw_icon_lane_assist(r, 590, t_row_y + 8, text_wh);
-    char v_temp_buf[24];
-    snprintf(v_temp_buf, sizeof(v_temp_buf), "%s", ui->use_mph ? "52 °F" : "11 °C");
-    draw_text(r, v_temp_buf, 725, t_row_y, 2, text_wh);
-    draw_icon_seatbelt(r, 775, t_row_y + 8, rgba(235, 45, 55, 255));
-    draw_icon_car_topdown(r, 805, t_row_y + 8, 16, 22, text_wh, rgba(235, 45, 55, 255), true, true);
+    /* Speed Limit Sign inside Left Pod */
+    int sign_x = left_pod_x + 22, sign_y = pod_y + 82, sign_w = 34, sign_h = 44;
+    fill_rect(r, sign_x, sign_y, sign_w, sign_h, rgba(250, 250, 250, 255));
+    draw_rect(r, sign_x, sign_y, sign_w, sign_h, 2, rgba(20, 20, 20, 255));
+    draw_text_centered(r, "20", sign_x + sign_w / 2, sign_y + 13, 2, rgba(10, 10, 10, 255));
 
-    /* ================= BOTTOM RIGHT DUAL BATTERY / FUEL RANGE STATUS ================= */
-    int b_row_y = content_y + content_h - 38;
+    /* Massive Speed Digits inside Left Pod */
+    int spd_digits = (cur_spd >= 100) ? 3 : ((cur_spd >= 10) ? 2 : 1);
+    draw_modern_number_centered(r, cur_spd, spd_digits, false, left_pod_x + 165, pod_y + 58, 48, 82, 10, 8, text_wh);
+    draw_text_centered(r, ui->use_mph ? "mph" : "km/h", left_pod_x + 165, pod_y + 154, 2, text_dim);
 
-    /* Bottom Left: Volvo Trip & Telemetry Summary */
-    char v_trip_buf[64];
-    snprintf(v_trip_buf, sizeof(v_trip_buf), "LAP %d/%d   P%d", state->current_lap > 0 ? state->current_lap : 5, state->total_laps > 0 ? state->total_laps : 15, state->race_position > 0 ? state->race_position : 2);
-    draw_text(r, v_trip_buf, 165, b_row_y - 12, 2, text_wh);
+    /* Lower Half of Left Pod: Pedal Bars, Temps & Chassis Ride Height */
+    draw_line(r, left_pod_x + 16, pod_y + 182, left_pod_x + pod_w - 16, pod_y + 182, rgba(45, 70, 100, 255));
+    draw_text(r, "THR", left_pod_x + 18, pod_y + 192, 1, volvo_green);
+    fill_rect(r, left_pod_x + 50, pod_y + 193, 74, 7, rgba(18, 28, 40, 255));
+    fill_rect(r, left_pod_x + 50, pod_y + 193, (int)(74.0f * state->throttle_pct / 100.0f), 7, volvo_green);
+    draw_text(r, "BRK", left_pod_x + 136, pod_y + 192, 1, rgba(245, 55, 65, 255));
+    fill_rect(r, left_pod_x + 168, pod_y + 193, 74, 7, rgba(28, 18, 24, 255));
+    fill_rect(r, left_pod_x + 168, pod_y + 193, (int)(74.0f * state->brake_pct / 100.0f), 7, rgba(245, 55, 65, 255));
+
+    snprintf(v_buf, sizeof(v_buf), "H2O %.0f°C   OIL %.0f°C (%.1fB)", state->water_temp, state->oil_temp, state->oil_pressure);
+    draw_text(r, v_buf, left_pod_x + 18, pod_y + 214, 1, text_wh);
+    snprintf(v_buf, sizeof(v_buf), "SUSP %.0f/%.0f/%.0f/%.0fMM  RH %.0f",
+             state->susp_height[0], state->susp_height[1],
+             state->susp_height[2], state->susp_height[3], state->body_height);
+    draw_text(r, v_buf, left_pod_x + 18, pod_y + 234, 1, text_dim);
+    snprintf(v_buf, sizeof(v_buf), "STEER %+.1fD  CLU %.0f%%  TOP %.0fK",
+             state->steer_angle_fl_deg, (100.0f - state->clutch_pct), state->session_top_speed_kmh);
+    draw_text(r, v_buf, left_pod_x + 18, pod_y + 254, 1, volvo_gold);
+
+    /* Right Glass Pod (True OLED Black with Scandinavian Ice Border) */
+    draw_panel(r, right_pod_x, pod_y, pod_w, pod_h, rgba(0, 0, 0, 255), rgba(85, 140, 195, 190), 12);
+
+    /* Green READY badge & Active Gear Number at top right */
+    draw_text(r, "READY", right_pod_x + 24, pod_y + 18, 2, volvo_green);
+    snprintf(v_buf, sizeof(v_buf), "GEAR %c  (%+.0f KW)", gear_to_char(state->current_gear), state->energy_recovery_kw);
+    draw_text_right(r, v_buf, right_pod_x + pod_w - 18, pod_y + 20, 1, volvo_cyan);
+
+    /* Massive Gear Letter */
+    char cur_gear = 'D';
+    if (state->speed_kmh < 0.2f && state->throttle_pct < 0.05f) cur_gear = 'P';
+    else if (state->current_gear == -1) cur_gear = 'N';
+    else if (state->current_gear == 0) cur_gear = 'R';
+
+    draw_modern_char(r, cur_gear, right_pod_x + 30, pod_y + 56, 48, 82, 10, text_wh);
+
+    /* Vertical Gear Column */
+    int col_x = right_pod_x + 100;
+    rgba_t col_r = (cur_gear == 'R') ? text_wh : rgba(140, 160, 180, 120);
+    rgba_t col_n = (cur_gear == 'N') ? text_wh : rgba(140, 160, 180, 120);
+    rgba_t col_d = (cur_gear == 'D') ? text_wh : rgba(140, 160, 180, 120);
+    rgba_t col_b = rgba(140, 160, 180, 120);
+
+    draw_modern_char(r, 'R', col_x, pod_y + 56, 16, 22, 3, col_r);
+    draw_modern_char(r, 'N', col_x, pod_y + 84, 16, 22, 3, col_n);
+    draw_modern_char(r, 'D', col_x, pod_y + 112, 16, 22, 3, col_d);
+
+    /* - B + row */
+    draw_text(r, "-", col_x - 12, pod_y + 144, 2, col_b);
+    draw_modern_char(r, 'B', col_x, pod_y + 140, 16, 22, 3, col_b);
+    draw_text(r, "+", col_x + 20, pod_y + 144, 2, col_b);
+
+    /* Power / Charge column on the right */
+    int pwr_x = right_pod_x + 150;
+    draw_text(r, "power", pwr_x, pod_y + 72, 2, rgba(225, 235, 250, 220));
+    draw_thick_line(r, pwr_x - 5, pod_y + 98, pwr_x + 85, pod_y + 98, 1, rgba(140, 160, 185, 140));
+    draw_text(r, "charge", pwr_x, pod_y + 110, 2, volvo_cyan);
+
+    /* Lower Half of Right Pod: 4-Tire Temps & Contact Patches + G-Force & Lap Timing */
+    draw_line(r, right_pod_x + 16, pod_y + 182, right_pod_x + pod_w - 16, pod_y + 182, rgba(45, 70, 100, 255));
     char sc_fl = (state->surface_type[0] != 0) ? (char)state->surface_type[0] : 'T';
-    snprintf(v_trip_buf, sizeof(v_trip_buf), "TYRES %.0f°C [%c]  |  AWD 46:54", state->tire_temp[0], sc_fl);
-    draw_text(r, v_trip_buf, 165, b_row_y + 10, 1, volvo_cyan);
+    char sc_fr = (state->surface_type[1] != 0) ? (char)state->surface_type[1] : 'T';
+    char sc_rl = (state->surface_type[2] != 0) ? (char)state->surface_type[2] : 'T';
+    char sc_rr = (state->surface_type[3] != 0) ? (char)state->surface_type[3] : 'T';
+    snprintf(v_buf, sizeof(v_buf), "FL %.0f°[%c] FR %.0f°[%c] RL %.0f°[%c] RR %.0f°[%c]",
+             state->tire_temp[0], sc_fl, state->tire_temp[1], sc_fr,
+             state->tire_temp[2], sc_rl, state->tire_temp[3], sc_rr);
+    draw_text_centered(r, v_buf, right_pod_x + pod_w / 2, pod_y + 192, 1, volvo_cyan);
+    snprintf(v_buf, sizeof(v_buf), "G-LOAD %+.2fL / %+.2fN   SLIP %.0f/%.0f%%",
+             state->g_lat, state->g_lon, state->tire_slip_ratio[0] * 100.0f, state->tire_slip_ratio[2] * 100.0f);
+    draw_text_centered(r, v_buf, right_pod_x + pod_w / 2, pod_y + 214, 1, text_wh);
+    char v_cur[16], v_bst[16];
+    format_lap_time(state->current_lap_ms, v_cur, sizeof(v_cur));
+    format_lap_time(state->best_lap_ms, v_bst, sizeof(v_bst));
+    snprintf(v_buf, sizeof(v_buf), "CURR %s  BEST %s", v_cur, v_bst);
+    draw_text(r, v_buf, right_pod_x + 16, pod_y + 234, 1, volvo_green);
+    snprintf(v_buf, sizeof(v_buf), "DELTA %+.3fs  |  FUEL %.1f%% (%.1fL)",
+             (float)state->delta_ms / 1000.0f, state->fuel_pct,
+             (state->fuel_burn_per_lap > 0.1f) ? (state->fuel_pct / state->fuel_burn_per_lap) : 21.2f);
+    draw_text(r, v_buf, right_pod_x + 16, pod_y + 254, 1, volvo_gold);
 
-    int batt_km = (int)((state->fuel_pct > 0.0f ? state->fuel_pct : 85.0f) * (ui->use_mph ? 2.5f : 4.0f));
-    int fuel_km = (int)(state->fuel_pct * (ui->use_mph ? 3.4f : 5.4f));
+    /* --- TOP STATUS BAR & POLESTAR RACE TELEMETRY PILL --- */
+    draw_thick_line(r, 415, content_y + 18, 428, content_y + 13, 2, rgba(45, 225, 115, 255));
+    draw_thick_line(r, 415, content_y + 24, 428, content_y + 24, 2, rgba(45, 225, 115, 255));
+    draw_thick_line(r, 415, content_y + 30, 428, content_y + 35, 2, rgba(45, 225, 115, 255));
+    fill_circle(r, 410, content_y + 24, 6, rgba(45, 225, 115, 255));
 
-    /* Battery Icon & Bar */
-    draw_icon_battery(r, 765, b_row_y - 12, 16, 10, (state->fuel_pct > 0.0f ? state->fuel_pct : 85.0f) / 100.0f, volvo_cyan);
-    fill_rect(r, 790, b_row_y - 8, 40, 4, rgba(30, 45, 65, 255));
-    fill_rect(r, 790, b_row_y - 8, (int)(40.0f * ((state->fuel_pct > 0.0f ? state->fuel_pct : 85.0f) / 100.0f)), 4, volvo_cyan);
-    char v_bat_buf[32];
-    snprintf(v_bat_buf, sizeof(v_bat_buf), "%d %s", batt_km, ui->use_mph ? "mi" : "km");
-    draw_text(r, v_bat_buf, 840, b_row_y - 16, 2, volvo_cyan);
+    draw_text(r, "/ \\", 595, content_y + 16, 2, text_wh);
+    /* Moved 11 °C to x=700 so it never touches the red seatbelt icon at x=815 */
+    draw_text(r, "11 °C", 700, content_y + 16, 2, text_wh);
 
-    /* Fuel Pump Icon & Bar */
-    draw_icon_fuel_pump(r, 768, b_row_y + 8, text_wh);
-    fill_rect(r, 790, b_row_y + 14, 40, 4, rgba(30, 45, 65, 255));
-    fill_rect(r, 790, b_row_y + 14, (int)(40.0f * (state->fuel_pct / 100.0f)), 4, text_wh);
-    char v_fuel_buf[32];
-    snprintf(v_fuel_buf, sizeof(v_fuel_buf), "%d %s", fuel_km, ui->use_mph ? "mi" : "km");
-    draw_text(r, v_fuel_buf, 840, b_row_y + 10, 2, text_wh);
+    fill_circle(r, 815, content_y + 20, 4, rgba(225, 30, 30, 255));
+    draw_thick_line(r, 813, content_y + 24, 817, content_y + 32, 2, rgba(225, 30, 30, 255));
+    draw_topdown_car(r, 845, content_y + 24, text_wh);
+
+    /* Top-Center Polestar Race Telemetry Pill on True OLED Black */
+    draw_panel(r, 405, content_y + 46, 470, 40, rgba(0, 0, 0, 255), rgba(245, 185, 25, 180), 8);
+    char ps_top[256], s1_v[16], s2_v[16], s3_v[16];
+    format_sector_time(state->cur_sector_ms[0], s1_v, sizeof(s1_v));
+    format_sector_time(state->cur_sector_ms[1], s2_v, sizeof(s2_v));
+    format_sector_time(state->cur_sector_ms[2], s3_v, sizeof(s3_v));
+    snprintf(ps_top, sizeof(ps_top), "%s  |  LAP %d/%d  |  POS P%d/%d  |  CAT %s",
+             state->circuit_name[0] ? state->circuit_name : "CIRCUIT",
+             state->current_lap > 0 ? state->current_lap : 5,
+             state->total_laps > 0 ? state->total_laps : 15,
+             state->race_position > 0 ? state->race_position : 2,
+             state->total_cars > 0 ? state->total_cars : 20,
+             state->car_category[0] ? state->car_category : "GR3");
+    draw_text_centered(r, ps_top, 640, content_y + 52, 1, volvo_gold);
+    snprintf(ps_top, sizeof(ps_top), "S1 %s   S2 %s   S3 %s   |   AERO %.0f/%.0fKG",
+             s1_v, s2_v, s3_v, state->downforce_front_kg, state->downforce_rear_kg);
+    draw_text_centered(r, ps_top, 640, content_y + 70, 1, text_wh);
+
+    /* --- BOTTOM RIGHT: DUAL DASHED RANGE PROGRESS BARS --- */
+    int rng_x = 810, rng_y = content_y + content_h - 48;
+    draw_vector_battery(r, rng_x, rng_y, 20, 12, 10, text_dim, volvo_cyan);
+    draw_dashed_progress_bar(r, rng_x + 28, rng_y + 2, 8, 1, 8, 8, 4, volvo_cyan, rgba(45, 60, 80, 200));
+    draw_text(r, "0 km", rng_x + 130, rng_y, 2, text_wh);
+
+    draw_vector_fuel_pump(r, rng_x, rng_y + 22, 14, text_wh);
+    draw_dashed_progress_bar(r, rng_x + 28, rng_y + 25, 8, 6, 8, 8, 4, text_wh, rgba(45, 60, 80, 200));
+    draw_text(r, "540 km", rng_x + 130, rng_y + 22, 2, text_wh);
 }
+
+
+
 
 static void render_theme_ev_cockpit(SDL_Renderer *r, const gt7_state_t *state, const hud_ui_state_t *ui, uint32_t now_ms, int top_y, int bot_y) {
     draw_ev_brand_selector(r, ui, top_y);
@@ -2968,24 +3909,40 @@ static void render_theme_f1(SDL_Renderer *r, const gt7_state_t *state, const hud
         draw_7seg_char(r, (char)('0' + state->suggested_gear), 750, content_y + 162, 50, 70, 9, rgba(255, 255, 255, 255), rgba(0, 0, 0, 0));
     }
 
+    /* F1 PCU-8D Telemetry Ribbon between Gear & Speed */
+    int f1_rib_y = content_y + 308;
+    fill_rect(r, 448, f1_rib_y, 384, 38, rgba(0, 0, 0, 255));
+    draw_rect(r, 448, f1_rib_y, 384, 38, 1, rgba(0, 175, 215, 160));
+    char f1_mid[80];
+    format_lap_time(state->optimal_lap_ms, lbuf, sizeof(lbuf));
+    snprintf(f1_mid, sizeof(f1_mid), "OPT %s  |  CLU %.0f%%  |  AERO %.0f/%.0fKG",
+             lbuf, (100.0f - state->clutch_pct), state->downforce_front_kg, state->downforce_rear_kg);
+    draw_text_centered(r, f1_mid, 640, f1_rib_y + 6, 1, purple);
+    snprintf(f1_mid, sizeof(f1_mid), "RAD %.0f/%.0f R/S  |  TV %.0f/%.0fNM  |  WB %.2fM",
+             (state->wheel_angular_speed[0] + state->wheel_angular_speed[1]) * 0.5f,
+             (state->wheel_angular_speed[2] + state->wheel_angular_speed[3]) * 0.5f,
+             state->torque_vector_nm[0], state->torque_vector_nm[2],
+             state->wheel_base_m > 0.5f ? state->wheel_base_m : 2.75f);
+    draw_text_centered(r, f1_mid, 640, f1_rib_y + 22, 1, amber);
+
     int spd = (int)roundf(ui->use_mph ? state->speed_mph : state->speed_kmh);
-    int spd_y = content_y + content_h - 235;
-    draw_7seg_number(r, spd, 3, false, 715, spd_y, 64, 105, 13, 12, cyan, rgba(22, 28, 38, 255));
-    draw_text(r, ui->use_mph ? "MPH" : "KM/H", 732, spd_y + 68, 3, cyan);
+    int spd_y = content_y + content_h - 205;
+    draw_7seg_number(r, spd, 3, false, 680, spd_y, 64, 105, 13, 12, cyan, rgba(22, 28, 38, 255));
+    draw_text(r, ui->use_mph ? "MPH" : "KM/H", 700, spd_y + 68, 3, cyan);
 
     int pill_y = content_y + content_h - 82;
     bool tcs_on = (state->flags & GT7_FLAG_TCS_ACTIVE) != 0;
     bool asm_on = (state->flags & GT7_FLAG_ASM_ACTIVE) != 0;
     bool drs_ready = (state->throttle_pct > 95.0f && state->current_gear >= 6);
 
-    fill_rect(r, 402, pill_y, 145, 64, drs_ready ? rgba(0, 215, 90, 255) : rgba(24, 30, 40, 255));
-    draw_text_centered(r, "DRS / OVR", 474, pill_y + 24, 2, drs_ready ? rgba(10, 14, 18, 255) : rgba(110, 120, 140, 255));
+    fill_rect(r, 402, pill_y, 145, 64, drs_ready ? rgba(0, 215, 90, 255) : rgba(18, 24, 34, 255));
+    draw_text_centered(r, "DRS / OVR", 474, pill_y + 24, 2, drs_ready ? rgba(0, 0, 0, 255) : rgba(130, 145, 165, 255));
 
-    fill_rect(r, 567, pill_y, 145, 64, tcs_on ? amber : rgba(24, 30, 40, 255));
-    draw_text_centered(r, "TCS ACT", 639, pill_y + 24, 2, tcs_on ? rgba(10, 14, 18, 255) : rgba(110, 120, 140, 255));
+    fill_rect(r, 567, pill_y, 145, 64, tcs_on ? amber : rgba(18, 24, 34, 255));
+    draw_text_centered(r, "TCS ACT", 639, pill_y + 24, 2, tcs_on ? rgba(0, 0, 0, 255) : rgba(130, 145, 165, 255));
 
-    fill_rect(r, 732, pill_y, 145, 64, asm_on ? rgba(255, 60, 60, 255) : rgba(24, 30, 40, 255));
-    draw_text_centered(r, "ASM / ABS", 804, pill_y + 24, 2, asm_on ? rgba(255, 255, 255, 255) : rgba(110, 120, 140, 255));
+    fill_rect(r, 732, pill_y, 145, 64, asm_on ? rgba(255, 60, 60, 255) : rgba(18, 24, 34, 255));
+    draw_text_centered(r, "ASM / ABS", 804, pill_y + 24, 2, asm_on ? rgba(255, 255, 255, 255) : rgba(130, 145, 165, 255));
 
     /* Right Column: Race Position, Laps, Fuel & Telemetry Trace */
     int r_top_h = (int)(content_h * 0.68f);
@@ -3000,30 +3957,42 @@ static void render_theme_f1(SDL_Renderer *r, const gt7_state_t *state, const hud
     snprintf(lap_str, sizeof(lap_str), "P%d", state->race_position > 0 ? state->race_position : 1);
     draw_text_right(r, lap_str, 1244, content_y + 38, 4, cyan);
 
-    draw_text(r, "FUEL REMAINING", 932, content_y + 96, 2, rgba(170, 185, 205, 255));
+    draw_text(r, "FUEL REMAINING", 932, content_y + 92, 2, rgba(170, 185, 205, 255));
     snprintf(lap_str, sizeof(lap_str), "%.1f%%", state->fuel_pct);
-    draw_text_right(r, lap_str, 1244, content_y + 90, 3, (state->fuel_pct < 15.0f) ? rgba(255, 60, 60, 255) : rgba(0, 240, 120, 255));
-    fill_rect(r, 932, content_y + 120, 312, 16, rgba(30, 36, 48, 255));
-    fill_rect(r, 932, content_y + 120, (int)(3.12f * state->fuel_pct), 16, (state->fuel_pct < 15.0f) ? rgba(255, 60, 60, 255) : rgba(0, 230, 115, 255));
+    draw_text_right(r, lap_str, 1244, content_y + 86, 3, (state->fuel_pct < 15.0f) ? rgba(255, 60, 60, 255) : rgba(0, 240, 120, 255));
+    fill_rect(r, 932, content_y + 116, 312, 14, rgba(22, 28, 38, 255));
+    fill_rect(r, 932, content_y + 116, (int)(3.12f * state->fuel_pct), 14, (state->fuel_pct < 15.0f) ? rgba(255, 60, 60, 255) : rgba(0, 230, 115, 255));
 
     float est_laps = (state->fuel_burn_per_lap > 0.1f) ? (state->fuel_pct / state->fuel_burn_per_lap) : (state->fuel_pct / 3.2f);
     snprintf(lap_str, sizeof(lap_str), "EST. +%.1f LAPS  (%.1f%%/L)", est_laps, state->fuel_burn_per_lap);
-    draw_text(r, lap_str, 932, content_y + 146, 2, amber);
+    draw_text(r, lap_str, 932, content_y + 138, 2, amber);
 
     snprintf(lap_str, sizeof(lap_str), "BOOST: %+.2f BAR (PK %+.2f)", state->turbo_bar, state->peak_turbo_bar);
-    draw_text(r, lap_str, 932, content_y + 180, 2, cyan);
+    draw_text(r, lap_str, 932, content_y + 168, 2, cyan);
     snprintf(lap_str, sizeof(lap_str), "WATER: %.0fC   OIL: %.0fC", state->water_temp, state->oil_temp);
-    draw_text(r, lap_str, 932, content_y + 208, 2, rgba(190, 205, 225, 255));
-    snprintf(lap_str, sizeof(lap_str), "OIL PRESS: %.1f BAR  TOP: %.0f", state->oil_pressure, state->session_top_speed_kmh);
-    draw_text(r, lap_str, 932, content_y + 236, 2, rgba(190, 205, 225, 255));
+    draw_text(r, lap_str, 932, content_y + 194, 2, rgba(190, 205, 225, 255));
+    snprintf(lap_str, sizeof(lap_str), "OIL P: %.1fB   TOP: %.0fKM/H", state->oil_pressure, state->session_top_speed_kmh);
+    draw_text(r, lap_str, 932, content_y + 220, 2, rgba(190, 205, 225, 255));
 
     /* F1 ERS / Hybrid Energy Bar & MGU-K Status */
-    draw_text(r, "ERS / HYBRID DEPLOYMENT", 932, content_y + 264, 2, amber);
+    draw_text(r, "ERS / HYBRID DEPLOYMENT", 932, content_y + 248, 2, amber);
     float soc = (state->battery_soc_pct > 0.0f) ? state->battery_soc_pct : (78.4f - fmodf((float)now_ms * 0.00005f, 20.0f));
-    fill_rect(r, 932, content_y + 284, 312, 12, rgba(20, 36, 48, 255));
-    fill_rect(r, 932, content_y + 284, (int)(3.12f * soc), 12, cyan);
+    fill_rect(r, 932, content_y + 268, 312, 12, rgba(20, 36, 48, 255));
+    fill_rect(r, 932, content_y + 268, (int)(3.12f * soc), 12, cyan);
     snprintf(lap_str, sizeof(lap_str), "MGU-K: %+.0f KW   SOC: %.1f%%", state->energy_recovery_kw, soc);
-    draw_text(r, lap_str, 932, content_y + 302, 2, cyan);
+    draw_text(r, lap_str, 932, content_y + 286, 2, cyan);
+
+    /* F1 Brake Balance, TCS, Fuel Map & Suspension Travel Footer */
+    if (r_top_h >= 340) {
+        SDL_RenderDrawLine(r, 932, content_y + 312, 1244, content_y + 312);
+        snprintf(lap_str, sizeof(lap_str), "BBAL: %+d   TCS: %d   MAP: %d",
+                 state->gt7_brake_bal, state->gt7_tcs_level, state->gt7_fuel_map);
+        draw_text(r, lap_str, 932, content_y + 320, 2, amber);
+        snprintf(lap_str, sizeof(lap_str), "SUSP: %.0f/%.0f/%.0f/%.0fMM  RH: %.0f",
+                 state->susp_height[0], state->susp_height[1],
+                 state->susp_height[2], state->susp_height[3], state->body_height);
+        draw_text(r, lap_str, 932, content_y + 344, 2, rgba(190, 205, 225, 255));
+    }
 
     draw_gforce_and_trace(r, state, 912, content_y + r_top_h + 12, 352, r_bot_h, cyan);
 }
@@ -3117,10 +4086,19 @@ static void render_theme_gt3(SDL_Renderer *r, const gt7_state_t *state, const hu
         draw_7seg_char(r, (char)('0' + state->suggested_gear), 769, content_y + 136, 48, 66, 9, white, rgba(0, 0, 0, 0));
     }
 
+    /* MoTeC C1212 Telemetry Strip between Gear & Speed */
+    int gt3_rib_y = content_y + 282;
+    fill_rect(r, 424, gt3_rib_y, 432, 26, rgba(0, 0, 0, 255));
+    draw_rect(r, 424, gt3_rib_y, 432, 26, 1, rgba(255, 175, 20, 150));
+    snprintf(tbuf, sizeof(tbuf), "%.0f RPM | CLU %.0f%% | BB %+d | MAP %d | TCS %d",
+             state->engine_rpm, (100.0f - state->clutch_pct),
+             state->gt7_brake_bal, state->gt7_fuel_map, state->gt7_tcs_level);
+    draw_text_centered(r, tbuf, 640, gt3_rib_y + 7, 1, gold);
+
     int spd = (int)roundf(ui->use_mph ? state->speed_mph : state->speed_kmh);
-    int spd_y = content_y + content_h - 210;
-    draw_7seg_number(r, spd, 3, false, 705, spd_y, 58, 92, 11, 12, white, rgba(0, 0, 0, 0));
-    draw_text(r, ui->use_mph ? "MPH" : "KM/H", 722, spd_y + 60, 3, gold);
+    int spd_y = content_y + content_h - 196;
+    draw_7seg_number(r, spd, 3, false, 680, spd_y, 58, 92, 11, 12, white, rgba(22, 28, 38, 255));
+    draw_text(r, ui->use_mph ? "MPH" : "KM/H", 700, spd_y + 60, 3, gold);
 
     int pb_y = content_y + content_h - 86;
     draw_text(r, "THR", 426, pb_y + 2, 2, green);
@@ -3207,15 +4185,15 @@ static void render_theme_rally(SDL_Renderer *r, const gt7_state_t *state, const 
     int bot_box_h = content_h - top_box_h - 12;
 
     draw_panel(r, 16, content_y, 368, top_box_h, rgba(0, 0, 0, 255), orange, 12);
-    draw_text(r, "TURBO ANTI-LAG BOOST", 34, content_y + 12, 2, orange);
+    draw_text(r, "TURBO ANTI-LAG BOOST", 34, content_y + 10, 2, orange);
 
-    int bcx = 200, bcy = content_y + top_box_h / 2 + 8, brad = 84;
+    int bcx = 200, bcy = content_y + top_box_h / 2 - 18, brad = 66;
     draw_circle(r, bcx, bcy, brad, 4, rgba(60, 68, 80, 255));
     for (int b = -10; b <= 20; b += 5) {
         float norm = (float)(b + 10) / 30.0f;
         float ang = (135.0f + norm * 270.0f) * (float)M_PI / 180.0f;
-        int x1 = bcx + (int)(cosf(ang) * (brad - 14));
-        int y1 = bcy + (int)(sinf(ang) * (brad - 14));
+        int x1 = bcx + (int)(cosf(ang) * (brad - 12));
+        int y1 = bcy + (int)(sinf(ang) * (brad - 12));
         int x2 = bcx + (int)(cosf(ang) * brad);
         int y2 = bcy + (int)(sinf(ang) * brad);
         draw_thick_line(r, x1, y1, x2, y2, 3, (b >= 10) ? rgba(255, 60, 40, 255) : yellow);
@@ -3224,20 +4202,20 @@ static void render_theme_rally(SDL_Renderer *r, const gt7_state_t *state, const 
     if (b_clamped < -1.0f) b_clamped = -1.0f;
     if (b_clamped > 2.0f)  b_clamped = 2.0f;
     float b_ang = (135.0f + ((b_clamped + 1.0f) / 3.0f) * 270.0f) * (float)M_PI / 180.0f;
-    draw_thick_line(r, bcx, bcy, bcx + (int)(cosf(b_ang) * (brad - 10)), bcy + (int)(sinf(b_ang) * (brad - 10)), 5, orange);
-    fill_circle(r, bcx, bcy, 10, yellow);
+    draw_thick_line(r, bcx, bcy, bcx + (int)(cosf(b_ang) * (brad - 8)), bcy + (int)(sinf(b_ang) * (brad - 8)), 5, orange);
+    fill_circle(r, bcx, bcy, 8, yellow);
 
     char bbuf[128];
     snprintf(bbuf, sizeof(bbuf), "%+.2f BAR", state->turbo_bar);
-    draw_text_centered(r, bbuf, bcx, bcy + 36, 3, white);
+    draw_text_centered(r, bbuf, bcx, bcy + brad + 4, 3, white);
 
-    snprintf(bbuf, sizeof(bbuf), "PEAK %+.2fB  ALS ACT", state->peak_turbo_bar);
-    draw_text_centered(r, bbuf, bcx, bcy + 60, 2, yellow);
+    snprintf(bbuf, sizeof(bbuf), "PEAK %+.2fB   ALS ACT", state->peak_turbo_bar);
+    draw_text_centered(r, bbuf, bcx, bcy + brad + 30, 2, yellow);
 
     char sc_fl = (state->surface_type[0] != 0) ? (char)state->surface_type[0] : 'T';
     const char *s_name = (sc_fl == 'C' || sc_fl == 'c') ? "CURB" : ((sc_fl == 'D' || sc_fl == 'd') ? "DIRT / GRAVEL" : ((sc_fl == 'G' || sc_fl == 'g') ? "GRASS" : ((sc_fl == 'S' || sc_fl == 's') ? "SNOW / ICE" : "TARMAC")));
     snprintf(bbuf, sizeof(bbuf), "SURFACE: %s [%c]", s_name, sc_fl);
-    draw_text_centered(r, bbuf, bcx, bcy + 80, 2, orange);
+    draw_text_centered(r, bbuf, bcx, bcy + brad + 50, 2, orange);
 
     draw_tires_widget(r, state, 16, content_y + top_box_h + 12, 368, bot_box_h, orange);
 
@@ -3252,7 +4230,7 @@ static void render_theme_rally(SDL_Renderer *r, const gt7_state_t *state, const 
     int gbox_y = content_y + 72;
     fill_rect(r, 515, gbox_y, 250, 285, rgba(0, 0, 0, 255));
     draw_rect(r, 515, gbox_y, 250, 285, 4, yellow);
-    draw_7seg_char(r, gear_to_char(state->current_gear), 550, gbox_y + 20, 180, 245, 28, yellow, rgba(36, 38, 45, 255));
+    draw_7seg_char(r, gear_to_char(state->current_gear), 550, gbox_y + 20, 180, 245, 28, yellow, rgba(24, 26, 32, 255));
 
     bool hbrake = (state->flags & GT7_FLAG_HANDBRAKE) != 0;
     int spd_y = gbox_y + 302;
@@ -3261,8 +4239,18 @@ static void render_theme_rally(SDL_Renderer *r, const gt7_state_t *state, const 
         draw_text_centered(r, "!! HANDBRAKE LOCK !!", 640, spd_y + 20, 4, white);
     } else {
         int spd = (int)roundf(ui->use_mph ? state->speed_mph : state->speed_kmh);
-        draw_7seg_number(r, spd, 3, false, 685, spd_y, 62, 95, 12, 12, white, rgba(28, 32, 40, 255));
-        draw_text(r, ui->use_mph ? "MPH" : "KM/H", 705, spd_y + 55, 3, orange);
+        draw_7seg_number(r, spd, 3, false, 748, spd_y, 62, 95, 12, 12, white, rgba(22, 26, 32, 255));
+        draw_text(r, ui->use_mph ? "MPH" : "KM/H", 762, spd_y + 55, 3, orange);
+
+        /* Left side of Speed row inside WRC Center Panel: Stage Time, Delta & Fuel */
+        char wrc_t[24];
+        format_lap_time(state->current_lap_ms, wrc_t, sizeof(wrc_t));
+        draw_text(r, "STAGE TIME", 418, spd_y + 6, 1, yellow);
+        draw_text(r, wrc_t, 418, spd_y + 22, 2, white);
+        snprintf(bbuf, sizeof(bbuf), "DELTA %+.2fs", (float)state->delta_ms / 1000.0f);
+        draw_text(r, bbuf, 418, spd_y + 48, 1, (state->delta_ms <= 0) ? rgba(0, 245, 95, 255) : rgba(255, 55, 55, 255));
+        snprintf(bbuf, sizeof(bbuf), "FUEL %.0f%%  H2O %.0fC", state->fuel_pct, state->water_temp);
+        draw_text(r, bbuf, 418, spd_y + 66, 1, orange);
     }
 
     fill_rect(r, 428, gbox_y, 30, 285, rgba(35, 20, 22, 255));
@@ -3283,9 +4271,9 @@ static void render_theme_rally(SDL_Renderer *r, const gt7_state_t *state, const 
 
     /* Right Panel: Chassis Pitch/Roll Inclinometer */
     draw_panel(r, 896, content_y, 368, top_box_h, rgba(0, 0, 0, 255), orange, 12);
-    draw_text(r, "CHASSIS ROLL / PITCH & RIDE", 914, content_y + 12, 2, orange);
+    draw_text(r, "CHASSIS ROLL / PITCH & RIDE", 914, content_y + 10, 2, orange);
 
-    int icx = 1080, icy = content_y + top_box_h / 2 - 12, irad = 60;
+    int icx = 1080, icy = content_y + top_box_h / 2 - 22, irad = 52;
     draw_circle(r, icx, icy, irad, 2, rgba(80, 90, 110, 255));
     float roll_rad = state->roll * (float)M_PI / 180.0f;
     int rx1 = icx - (int)(cosf(roll_rad) * (irad - 8));
@@ -3294,14 +4282,16 @@ static void render_theme_rally(SDL_Renderer *r, const gt7_state_t *state, const 
     int ry2 = icy + (int)(sinf(roll_rad) * (irad - 8));
     draw_thick_line(r, rx1, ry1, rx2, ry2, 4, yellow);
 
-    snprintf(bbuf, sizeof(bbuf), "ROLL: %+.1f DEG   PITCH: %+.1f DEG", state->roll, state->pitch);
-    draw_text_centered(r, bbuf, 1080, content_y + top_box_h - 78, 2, white);
-    snprintf(bbuf, sizeof(bbuf), "RIDE: %.0f MM   ROT: %+.1f R/S", state->body_height, state->steering_ang_vel);
-    draw_text_centered(r, bbuf, 1080, content_y + top_box_h - 56, 2, orange);
+    snprintf(bbuf, sizeof(bbuf), "ROLL: %+.1fD   PITCH: %+.1fD", state->roll, state->pitch);
+    draw_text_centered(r, bbuf, 1080, content_y + top_box_h - 82, 2, white);
+    snprintf(bbuf, sizeof(bbuf), "RIDE: %.0fMM   ROT: %+.1f R/S", state->body_height, state->steering_ang_vel);
+    draw_text_centered(r, bbuf, 1080, content_y + top_box_h - 58, 2, orange);
     snprintf(bbuf, sizeof(bbuf), "SURGE: %+.2fG  HEAVE: %+.2fG  SWAY: %+.2fG", state->native_surge, state->native_heave, state->native_sway);
-    draw_text_centered(r, bbuf, 1080, content_y + top_box_h - 34, 1, yellow);
-    snprintf(bbuf, sizeof(bbuf), "TOP SPEED: %.1f KM/H", state->session_top_speed_kmh);
-    draw_text_centered(r, bbuf, 1080, content_y + top_box_h - 16, 1, white);
+    draw_text_centered(r, bbuf, 1080, content_y + top_box_h - 36, 1, yellow);
+    snprintf(bbuf, sizeof(bbuf), "SUSP: %.0f/%.0f/%.0f/%.0fMM  TOP: %.1fK",
+             state->susp_height[0], state->susp_height[1],
+             state->susp_height[2], state->susp_height[3], state->session_top_speed_kmh);
+    draw_text_centered(r, bbuf, 1080, content_y + top_box_h - 18, 1, white);
 
     draw_gforce_and_trace(r, state, 896, content_y + top_box_h + 12, 368, bot_box_h, orange);
 }
@@ -3320,20 +4310,20 @@ static void render_theme_jdm(SDL_Renderer *r, const gt7_state_t *state, const hu
     int bot_box_h = content_h - top_box_h - 12;
 
     draw_panel(r, 16, top_y, 368, top_box_h, rgba(0, 0, 0, 255), neon_blue, 14);
-    draw_text(r, "DEFI-LINK TURBO BOOST", 34, top_y + 14, 2, neon_blue);
+    draw_text(r, "DEFI-LINK TURBO BOOST", 34, top_y + 12, 2, neon_blue);
 
-    int bcx = 200, bcy = top_y + top_box_h / 2 + 12, brad = 104;
+    int bcx = 200, bcy = top_y + top_box_h / 2 - 8, brad = 88;
     draw_circle(r, bcx, bcy, brad, 4, neon_blue);
     draw_circle(r, bcx, bcy, brad - 8, 2, rgba(30, 50, 80, 255));
 
     for (int i = 0; i <= 30; ++i) {
         float norm = (float)i / 30.0f;
         float ang = (135.0f + norm * 270.0f) * (float)M_PI / 180.0f;
-        int inner = (i % 5 == 0) ? (brad - 22) : (brad - 14);
+        int inner = (i % 5 == 0) ? (brad - 20) : (brad - 12);
         int x1 = bcx + (int)(cosf(ang) * inner);
         int y1 = bcy + (int)(sinf(ang) * inner);
-        int x2 = bcx + (int)(cosf(ang) * (brad - 6));
-        int y2 = bcy + (int)(sinf(ang) * (brad - 6));
+        int x2 = bcx + (int)(cosf(ang) * (brad - 5));
+        int y2 = bcy + (int)(sinf(ang) * (brad - 5));
         draw_thick_line(r, x1, y1, x2, y2, (i % 5 == 0) ? 3 : 1, (i >= 22) ? neon_red : white);
     }
 
@@ -3348,12 +4338,12 @@ static void render_theme_jdm(SDL_Renderer *r, const gt7_state_t *state, const hu
     if (bval < -1.0f) bval = -1.0f;
     if (bval > 2.0f)  bval = 2.0f;
     float bang = (135.0f + ((bval + 1.0f) / 3.0f) * 270.0f) * (float)M_PI / 180.0f;
-    draw_thick_line(r, bcx, bcy, bcx + (int)(cosf(bang) * (brad - 16)), bcy + (int)(sinf(bang) * (brad - 16)), 5, neon_red);
-    fill_circle(r, bcx, bcy, 12, neon_red);
+    draw_thick_line(r, bcx, bcy, bcx + (int)(cosf(bang) * (brad - 14)), bcy + (int)(sinf(bang) * (brad - 14)), 5, neon_red);
+    fill_circle(r, bcx, bcy, 10, neon_red);
 
-    char buf[64];
+    char buf[128];
     snprintf(buf, sizeof(buf), "%+.2f BAR", state->turbo_bar);
-    draw_text_centered(r, buf, bcx, bcy + 42, 3, white);
+    draw_text_centered(r, buf, bcx, bcy + brad + 4, 3, white);
 
     snprintf(buf, sizeof(buf), "PEAK %+.2fB  VAC %+.2fB",
              state->peak_turbo_bar, (state->turbo_bar < 0.0f) ? state->turbo_bar : -0.65f);
@@ -3423,6 +4413,15 @@ static void render_theme_jdm(SDL_Renderer *r, const gt7_state_t *state, const hu
     fill_circle(r, 830, top_y + 56, 26, shift_lamp ? neon_red : rgba(35, 20, 25, 255));
     draw_circle(r, 830, top_y + 56, 26, 3, white);
     draw_text_centered(r, "SHIFT", 830, top_y + 90, 2, shift_lamp ? neon_red : rgba(120, 130, 150, 255));
+
+    /* Lower Corners of Center JDM Tachometer Panel: Digital RPM & Clutch/Gearbox */
+    snprintf(buf, sizeof(buf), "%.0f RPM", state->engine_rpm);
+    draw_text(r, buf, 416, top_y + content_h - 32, 2, neon_blue);
+    snprintf(buf, sizeof(buf), "CLU %.0f%%  L%d/%d",
+             (100.0f - state->clutch_pct),
+             state->current_lap > 0 ? state->current_lap : 5,
+             state->total_laps > 0 ? state->total_laps : 15);
+    draw_text_right(r, buf, 864, top_y + content_h - 32, 2, white);
 
     /* Right Panel: JDM Advance ZD Multi-Meter */
     draw_panel(r, 896, top_y, 368, top_box_h, rgba(0, 0, 0, 255), neon_blue, 14);
@@ -3562,13 +4561,13 @@ static void render_theme_track(SDL_Renderer *r, const gt7_state_t *state, const 
     draw_panel(r, 613, sy2, 651, r_bot_h, rgba(0, 0, 0, 255), amber, 12);
     draw_text(r, "STINT LAP HISTORY & PIT WINDOW STRATEGY", 631, sy2 + 12, 2, amber);
 
-    draw_text(r, "LAP     TIME         S1        S2        S3       FUEL    TOP SPD", 631, sy2 + 40, 2, rgba(145, 160, 185, 255));
+    draw_text(r, "LAP  TIME       S1      S2      S3     FUEL   TOP", 631, sy2 + 40, 2, rgba(145, 160, 185, 255));
     SDL_RenderDrawLine(r, 631, sy2 + 58, 1244, sy2 + 58);
 
     int show_laps = state->lap_history_count > 4 ? 4 : state->lap_history_count;
     for (int i = 0; i < show_laps; ++i) {
         const gt7_lap_record_t *rec = &state->lap_history[state->lap_history_count - show_laps + i];
-        int ry = sy2 + 66 + i * 28;
+        int ry = sy2 + 64 + i * 26;
         char t_str[24], s1_s[16], s2_s[16], s3_s[16];
         format_lap_time(rec->time_ms, t_str, sizeof(t_str));
         format_sector_time(rec->s1_ms, s1_s, sizeof(s1_s));
@@ -3576,21 +4575,42 @@ static void render_theme_track(SDL_Renderer *r, const gt7_state_t *state, const 
         format_sector_time(rec->s3_ms, s3_s, sizeof(s3_s));
 
         bool is_best = (rec->time_ms == state->best_lap_ms);
-        snprintf(cbuf, sizeof(cbuf), "L%02d   %s   %s    %s    %s    -%.1f%%   %.1fK",
+        snprintf(cbuf, sizeof(cbuf), "L%02d  %s  %s  %s  %s  -%.1f%%  %.0fK",
                  rec->lap_num, t_str, s1_s, s2_s, s3_s, rec->fuel_used, rec->top_speed_kmh);
         draw_text(r, cbuf, 631, ry, 2, is_best ? purple : white);
     }
 
-    /* Pit Strategy Summary Footer */
+    /* Live Race Engineer Telemetry Matrix below Stint History (Tires, Suspension, Engine & Hybrid) */
+    int mat_y = sy2 + 172;
+    if (r_bot_h - 172 >= 95) {
+        SDL_RenderDrawLine(r, 631, mat_y, 1244, mat_y);
+        char sc_0 = (state->surface_type[0] != 0) ? (char)state->surface_type[0] : 'T';
+        char sc_1 = (state->surface_type[1] != 0) ? (char)state->surface_type[1] : 'T';
+        char sc_2 = (state->surface_type[2] != 0) ? (char)state->surface_type[2] : 'T';
+        char sc_3 = (state->surface_type[3] != 0) ? (char)state->surface_type[3] : 'T';
+        snprintf(cbuf, sizeof(cbuf), "TIRES: FL %.0f°[%c] FR %.0f°[%c] RL %.0f°[%c] RR %.0f°[%c]",
+                 state->tire_temp[0], sc_0, state->tire_temp[1], sc_1,
+                 state->tire_temp[2], sc_2, state->tire_temp[3], sc_3);
+        draw_text(r, cbuf, 631, mat_y + 8, 2, cyan);
+
+        snprintf(cbuf, sizeof(cbuf), "SUSP: %.0f/%.0f/%.0f/%.0fMM | BOOST %+.2fB | OIL %.0f°C",
+                 state->susp_height[0], state->susp_height[1],
+                 state->susp_height[2], state->susp_height[3],
+                 state->turbo_bar, state->oil_temp);
+        draw_text(r, cbuf, 631, mat_y + 32, 2, white);
+    }
+
+    /* Pit Strategy Summary Footer on True OLED Black */
     float est_laps = (state->fuel_burn_per_lap > 0.1f) ? (state->fuel_pct / state->fuel_burn_per_lap) : (state->fuel_pct / 3.2f);
     int pit_lap = (state->current_lap > 0 ? state->current_lap : 5) + (int)floorf(est_laps);
-    fill_rect(r, 631, sy2 + r_bot_h - 46, 613, 32, rgba(22, 30, 44, 255));
+    fill_rect(r, 631, sy2 + r_bot_h - 42, 613, 30, rgba(0, 0, 0, 255));
+    draw_rect(r, 631, sy2 + r_bot_h - 42, 613, 30, 1, emerald);
     char sc_fl = (state->surface_type[0] != 0) ? (char)state->surface_type[0] : 'T';
     snprintf(cbuf, sizeof(cbuf), "BOX L%d (%.1f LAPS) | TIRE %.0fC [%c] | SWAY %+.2fG",
              pit_lap, est_laps,
              (state->tire_temp[0] + state->tire_temp[1] + state->tire_temp[2] + state->tire_temp[3]) * 0.25f,
              sc_fl, state->native_sway);
-    draw_text(r, cbuf, 643, sy2 + r_bot_h - 37, 2, emerald);
+    draw_text(r, cbuf, 643, sy2 + r_bot_h - 34, 2, emerald);
 }
 
 /* =========================================================================
@@ -4001,8 +5021,36 @@ bool hud_handle_touch_down(hud_ui_state_t *ui, gt7_client_t *client, gt7_state_t
         }
     }
 
-    /* In Luxury EV Cockpit, tapping center map toggles track circuit */
-    if (ui->theme == HUD_THEME_EV_COCKPIT && x >= 380 && x <= 900 && y >= 110 && y <= 560) {
+    /* In BMW OS 8.5/9 Mode, touch tabs for sub-view selection or center tap to cycle views */
+    if (ui->theme == HUD_THEME_EV_COCKPIT && ui->ev_style == EV_STYLE_BMW_I) {
+        int content_y = (show_bars ? 46 : 10) + 40;
+        if (y >= content_y + 2 && y <= content_y + 30) {
+            if (x >= 405 && x <= 520) {
+                ui->bmw_view = BMW_VIEW_M_DYNAMIC;
+                ui->theme_banner_until_ms = now_ms + 1500;
+                return true;
+            } else if (x >= 522 && x <= 625) {
+                ui->bmw_view = BMW_VIEW_MAP_COCKPIT;
+                ui->theme_banner_until_ms = now_ms + 1500;
+                return true;
+            } else if (x >= 627 && x <= 730) {
+                ui->bmw_view = BMW_VIEW_ASSIST_RADAR;
+                ui->theme_banner_until_ms = now_ms + 1500;
+                return true;
+            } else if (x >= 732 && x <= 845) {
+                ui->bmw_view = BMW_VIEW_MINIMAL_MAP;
+                ui->theme_banner_until_ms = now_ms + 1500;
+                return true;
+            }
+        }
+        if (x >= 420 && x <= 860 && y >= content_y + 35 && y <= 560) {
+            hud_cycle_bmw_view(ui, +1, now_ms);
+            return true;
+        }
+    }
+
+    /* In Luxury EV Cockpit (Non-BMW), tapping center map toggles track circuit */
+    if (ui->theme == HUD_THEME_EV_COCKPIT && ui->ev_style != EV_STYLE_BMW_I && x >= 380 && x <= 900 && y >= 110 && y <= 560) {
         gt7_cycle_demo_circuit(state);
         return true;
     }

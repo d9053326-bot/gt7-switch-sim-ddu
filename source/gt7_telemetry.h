@@ -15,7 +15,7 @@ extern "C" {
 #define FORZA_RECV_PORT  8000
 #define GT7_MAGIC_G7S0   0x47375330U
 
-#define GT7_APP_VERSION "_aw_1.11.06.1205"
+#define GT7_APP_VERSION "_aw_1.11.06.1220"
 
 #define GT7_TRACE_LEN 160
 #define GT7_TRACK_PTS 500

@@ -1,5 +1,5 @@
 # GT7 & PC SimHub Switch Sim-DDU Pro (Deutsch)
-**Version: `_aw_1.11.06.1205` (PS5 GT7 + PC SimHub / Forza Horizon 6 Dual-Engine & True OLED Black Edition)**
+**Version: `_aw_1.11.06.1220` (PS5 GT7 + PC SimHub / Forza Horizon 6 Dual-Engine & True OLED Black Edition)**
 
 [繁體中文](README_ZH.md) | [English](README_EN.md) | [日本語](README_JA.md)
 
@@ -92,4 +92,8 @@ Ein natives Homebrew Sim-Racing Dashboard Display Unit (`.nro`) speziell für di
    *(oder direkt in `/switch/gt7_switch_hud.nro`)*
 3. Setzen Sie die microSD-Karte wieder in die Switch ein und starten Sie Atmosphère.
 4. Öffnen Sie das Homebrew-Menü (Album) und starten Sie **GT7 Sim-DDU** mit einem Fingertipp!
-5. Stellen Sie sicher, dass Switch und PS5 im selben WLAN sind. Sobald Sie in GT7 auf die Strecke fahren, startet die 60Hz Telemetrie automatisch!
+5. **PS5 *Gran Turismo 7***: Stellen Sie sicher, dass Switch und PS5 im selben WLAN sind. Sobald Sie in GT7 auf die Strecke fahren, startet die 60Hz Telemetrie automatisch!
+6. **PC SimHub & *Forza Horizon 5 / 6* (Automatischer Empfang auf UDP-Ports `20777`, `8000` und `33740`)**:
+   - **Option A (SimHub UDP Forwarding — Empfohlen)**: Aktivieren Sie in SimHub unter *Game Config* das **UDP Forwarding** an die **Switch-IP** und Port **`20777`** (oder **`8000`** / **`33740`**). Volle Unterstützung für Forza Horizon 324B Dash-Pakete (intelligente `dash_off = 244` vs `232` Erkennung, exakte Forza-Ganganzeige `0=R, 1..10=Gänge, >=11=N`, `°F -> °C` Reifentemperatur-Umrechnung, Grip-Limit-Schlupfskalierung und 4-Rad-Federwege).
+   - **Option B (Direkter Forza Data Out im Spiel)**: Unter *Einstellungen -> HUD und Gameplay* **Datenausgabe = EIN**, **IP-Adresse = `<Switch_IP>`** und **Port = `8000` (oder `20777`)** einstellen.
+   - **Option C (Python-Bridge)**: `python3 tools/simhub_bridge.py --switch-ip <Switch_IP> --port 20777` ausführen.

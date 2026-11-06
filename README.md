@@ -1,5 +1,5 @@
 # GT7 & PC SimHub Switch Sim-DDU Pro (Nintendo Switch Sim Racing & EV Cockpit DDU)
-**Version / 版本號: `_aw_1.11.06.1205` (PS5 GT7 + PC SimHub / Forza Horizon 6 Dual-Engine & True OLED Black Edition)**
+**Version / 版本號: `_aw_1.11.06.1220` (PS5 GT7 + PC SimHub / Forza Horizon 6 Dual-Engine & True OLED Black Edition)**
 
 <p align="center">
   <b>🌐 Language Navigation / 語言切換 / 言語切替 / Sprachauswahl:</b><br><br>
@@ -95,9 +95,9 @@
   - **PC SimHub 跨平台賽車遊戲與《Forza Horizon 5 / 6》支援 (Assetto Corsa / ACC / iRacing / F1 / Forza Horizon 4/5/6 / Forza Motorsport / rFactor 2 / Dirt Rally 2.0 / EA WRC / BeamNG.drive)**：同時監聽 UDP Port **`20777`**、**`8000`** 與 **`33740`**，自動辨識並解析 5 種 PC SimHub / Forza 遙測格式，並將所有數據完整映射至 11 種儀表視圖（含四輪扭力向量、ePower/動能回收功率、空力下壓力、單圈三區段與理論最佳圈速）：
     1. **SimHub Custom UDP JSON / 巢狀 Web API JSON (`SIMHUB JSON`)**（支援單層與巢狀 `{"newData":{...}}` / `{"NewData":{...}}` 及 `DataCorePlugin.GameData.*` 與 Forza `RawData.*` 完整屬性名）
     2. **SimHub / Forza Horizon 5 & 6 "Data Out" 二進位封包 (`SIMHUB FZA`)** (`232` Sled / `311` FM7 Dash / `324` FH4/FH5/FH6 Horizon Dash / `331` FM8 Dash)：
-       - 完美對齊 Forza Horizon 12-Byte Horizon Placeholder 偏移 (`dash_off = 244`)
-       - 精準匹配 Forza 檔位編碼 (`0 = R 倒檔`, `1..10 = 1..10 檔`, `11 = N 空檔`)
-       - 全溫域華氏轉攝氏 (`°F -> °C`) 輪胎溫度轉換、四輪綜合滑移率 (`TireSlipRatio` + `TireCombinedSlip`)、正規化避震行程 (`0x44 NormalizedSuspensionTravel`)、路緣石/砂石路面識別 (`[T/C/D]`) 與車輛等級 (`D/C/B/A/S1/S2/X`)
+       - **智慧雙偏移自動偵測 (`dash_off = 232` vs `244`)**：根據 3D 速度向量 (`sqrt(vx²+vy²+vz²)`) 與四輪華氏胎溫自動評分，無論 Forza Horizon 12-Byte Horizon Placeholder 偏移 (`244`) 或 Motorsport (`232`) 皆可 100% 精準對齊
+       - **精準 Forza 檔位與暫停保護**：完整匹配 Forza 檔位編碼 (`0 = R 倒檔`, `1..10 = 1..10 檔`, `>=11 = N 空檔`)，並在遊戲暫停/選單全零封包 (`is_race_on == 0`) 時自動鎖定 `N` 空檔，杜絕誤跳 `R` 檔
+       - **Forza 抓地力極限滑移率正規化與全溫域胎溫**：將 Forza 正規化摩擦圓滑移率 (`0..1.0` 抓地範圍、`>1.0` 突破抓地力極限) 智慧映射至 HUD 輪胎滑移率與 TCS 閃燈；全溫域華氏轉攝氏 (`°F -> °C`) 輪胎溫度轉換、正規化避震行程 (`0x44 NormalizedSuspensionTravel`)、路緣石/砂石路面識別 (`[T/C/D]`) 與車輛等級 (`D/C/B/A/S1/S2/X`)
     3. **SimHub / Codemasters Mode 1 二進位封包 (`SIMHUB CM1`)** (`264` Bytes，自動偵測 `RPM/10` 與直接 `RPM` 倍率)
     4. **SimHub / OutGauge 二進位封包 (`SIMHUB OTG`)** (`92` / `96` Bytes，支援 BeamNG / LFS / Assetto Corsa OutGauge)
     5. **Forza Horizon 5 / 6 + SimHub 最佳建議設定**：

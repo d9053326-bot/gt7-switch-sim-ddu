@@ -1,5 +1,5 @@
 # GT7 & PC SimHub Switch Sim-DDU Pro (日本語)
-**バージョン: `_aw_1.11.06.1205` (PS5 GT7 + PC SimHub / Forza Horizon 6 デュアルエンジン & True OLED Black 版)**
+**バージョン: `_aw_1.11.06.1220` (PS5 GT7 + PC SimHub / Forza Horizon 6 デュアルエンジン & True OLED Black 版)**
 
 [繁體中文](README_ZH.md) | [English](README_EN.md) | [Deutsch](README_DE.md)
 
@@ -92,4 +92,8 @@
    *(または `/switch/gt7_switch_hud.nro` の直下でも可)*
 3. microSD カードを Switch に戻し、Atmosphère（大気層）を起動します。
 4. アルバム（Homebrew Menu）を開き、**GT7 Sim-DDU** アイコンをタップして起動します。
-5. Switch と PS5 が同じ Wi-Fi ネットワークに接続されていることを確認し、GT7 でコースに出ると自動的に 60Hz リアルタイムデータを受信開始します！
+5. **PS5『グランツーリスモ7』接続**: Switch と PS5 が同じ Wi-Fi ネットワークに接続されていることを確認し、GT7 でコースに出ると自動的に 60Hz リアルタイムデータを受信開始します！
+6. **PC SimHub &『Forza Horizon 5 / 6』接続（UDP ポート `20777` / `8000` / `33740` 自動認識）**:
+   - **方法 A（SimHub UDP 転送 — 推奨）**: SimHub の `Game Config -> UDP Forwarding` を有効にし、宛先 IP に **Switch の IP アドレス**、ポートに **`20777`**（または `8000` / `33740`）を設定します。Forza Horizon 独自の 324B パケット（`dash_off = 244` vs `232` 自動判別、ギア `0=R, 1..10=1〜10速, >=11=N`、華氏→摂氏タイヤ温度変換、グリップ限界スリップ率スケーリング、4輪サスペンションストローク）に完全対応しています。
+   - **方法 B（Forza ゲーム内 Data Out 直接送信）**: ゲーム内の『設定 -> HUD とゲームプレイ』で **データ出力 = オン**、**IP アドレス = Switch の IP**、**ポート = `8000` または `20777`** に設定します。
+   - **方法 C（Python ブリッジ）**: `python3 tools/simhub_bridge.py --switch-ip <SwitchのIP> --port 20777` を実行します。

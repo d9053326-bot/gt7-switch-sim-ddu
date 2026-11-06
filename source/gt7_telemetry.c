@@ -1126,16 +1126,36 @@ static void simhub_apply_kv(gt7_state_t *state, const char *key, const char *val
         state->tire_temp[3] = (fval > 135.0f) ? ((fval - 32.0f) * 5.0f / 9.0f) : fval;
     } else if (strcasecmp(key, "slip_fl") == 0 || strcasecmp(key, "TyreSlipFrontLeft") == 0 || strcasecmp(key, "TireSlipFrontLeft") == 0 || strcasecmp(key, "TireSlipRatioFrontLeft") == 0 || strcasecmp(key, "TireCombinedSlipFrontLeft") == 0) {
         float s = fabsf(fval);
-        state->tire_slip_ratio[0] = (s > 1.5f) ? (s / 100.0f) : ((s > 1.0f) ? 1.0f : s);
+        if (strncasecmp(key, "TireSlipRatio", 13) == 0 || strncasecmp(key, "TireCombinedSlip", 16) == 0) {
+            s = (s <= 1.0f) ? (s * 0.10f) : (0.12f + (s - 1.0f) * 0.60f);
+        } else if (s > 1.5f) {
+            s /= 100.0f;
+        }
+        state->tire_slip_ratio[0] = (s > 1.0f) ? 1.0f : s;
     } else if (strcasecmp(key, "slip_fr") == 0 || strcasecmp(key, "TyreSlipFrontRight") == 0 || strcasecmp(key, "TireSlipFrontRight") == 0 || strcasecmp(key, "TireSlipRatioFrontRight") == 0 || strcasecmp(key, "TireCombinedSlipFrontRight") == 0) {
         float s = fabsf(fval);
-        state->tire_slip_ratio[1] = (s > 1.5f) ? (s / 100.0f) : ((s > 1.0f) ? 1.0f : s);
+        if (strncasecmp(key, "TireSlipRatio", 13) == 0 || strncasecmp(key, "TireCombinedSlip", 16) == 0) {
+            s = (s <= 1.0f) ? (s * 0.10f) : (0.12f + (s - 1.0f) * 0.60f);
+        } else if (s > 1.5f) {
+            s /= 100.0f;
+        }
+        state->tire_slip_ratio[1] = (s > 1.0f) ? 1.0f : s;
     } else if (strcasecmp(key, "slip_rl") == 0 || strcasecmp(key, "TyreSlipRearLeft") == 0 || strcasecmp(key, "TireSlipRearLeft") == 0 || strcasecmp(key, "TireSlipRatioRearLeft") == 0 || strcasecmp(key, "TireCombinedSlipRearLeft") == 0) {
         float s = fabsf(fval);
-        state->tire_slip_ratio[2] = (s > 1.5f) ? (s / 100.0f) : ((s > 1.0f) ? 1.0f : s);
+        if (strncasecmp(key, "TireSlipRatio", 13) == 0 || strncasecmp(key, "TireCombinedSlip", 16) == 0) {
+            s = (s <= 1.0f) ? (s * 0.10f) : (0.12f + (s - 1.0f) * 0.60f);
+        } else if (s > 1.5f) {
+            s /= 100.0f;
+        }
+        state->tire_slip_ratio[2] = (s > 1.0f) ? 1.0f : s;
     } else if (strcasecmp(key, "slip_rr") == 0 || strcasecmp(key, "TyreSlipRearRight") == 0 || strcasecmp(key, "TireSlipRearRight") == 0 || strcasecmp(key, "TireSlipRatioRearRight") == 0 || strcasecmp(key, "TireCombinedSlipRearRight") == 0) {
         float s = fabsf(fval);
-        state->tire_slip_ratio[3] = (s > 1.5f) ? (s / 100.0f) : ((s > 1.0f) ? 1.0f : s);
+        if (strncasecmp(key, "TireSlipRatio", 13) == 0 || strncasecmp(key, "TireCombinedSlip", 16) == 0) {
+            s = (s <= 1.0f) ? (s * 0.10f) : (0.12f + (s - 1.0f) * 0.60f);
+        } else if (s > 1.5f) {
+            s /= 100.0f;
+        }
+        state->tire_slip_ratio[3] = (s > 1.0f) ? 1.0f : s;
     } else if (strcasecmp(key, "susp_fl") == 0 || strcasecmp(key, "SuspensionFrontLeft") == 0 || strcasecmp(key, "NormalizedSuspensionTravelFrontLeft") == 0 || strcasecmp(key, "SuspensionTravelMetersFrontLeft") == 0) {
         state->susp_height[0] = (fval >= 0.0f && fval <= 1.2f) ? (25.0f + fval * 65.0f) : fval;
     } else if (strcasecmp(key, "susp_fr") == 0 || strcasecmp(key, "SuspensionFrontRight") == 0 || strcasecmp(key, "NormalizedSuspensionTravelFrontRight") == 0 || strcasecmp(key, "SuspensionTravelMetersFrontRight") == 0) {
@@ -1318,8 +1338,9 @@ bool simhub_parse_packet(gt7_client_t *client, gt7_state_t *state, const uint8_t
      *    - 311 bytes: Forza Motorsport 7 Dash format (Dash offset = 232)
      *    - 323 / 324 bytes: Forza Horizon 4 / 5 / 6 Dash format (12B Horizon placeholder at 232..243 -> Dash offset = 244)
      *    - 331 bytes: Forza Motorsport (2023) Dash format (Dash offset = 232)
+     *    - 311..360 bytes: Extended Forza Horizon / Motorsport Dash packets with smart dash_off (232 vs 244) detection
      */
-    if (len == 232 || len == 311 || len == 323 || len == 324 || len == 331) {
+    if (len == 232 || (len >= 311 && len <= 360)) {
         int32_t is_race_on = read_i32_le(raw, 0x00);
         float max_rpm  = read_f32_le(raw, 0x08);
         float idle_rpm = read_f32_le(raw, 0x0C);
@@ -1329,8 +1350,12 @@ bool simhub_parse_packet(gt7_client_t *client, gt7_state_t *state, const uint8_t
             if (cur_rpm > max_rpm && cur_rpm <= 25000.0f) {
                 max_rpm = cur_rpm * 1.05f;
             }
-            state->rpm_limiter = (max_rpm >= 800.0f) ? (uint16_t)max_rpm : 8800;
-            state->rpm_warning = (uint16_t)(state->rpm_limiter * 0.88f);
+            if (max_rpm >= 800.0f) {
+                state->rpm_limiter = (uint16_t)max_rpm;
+            } else if (state->rpm_limiter < 1000) {
+                state->rpm_limiter = 8800;
+            }
+            state->rpm_warning = (uint16_t)(state->rpm_limiter * 0.85f);
             state->engine_rpm  = cur_rpm;
             state->g_lat = read_f32_le(raw, 0x14) / 9.80665f;
             state->native_heave = read_f32_le(raw, 0x18) / 9.80665f;
@@ -1349,11 +1374,11 @@ bool simhub_parse_packet(gt7_client_t *client, gt7_state_t *state, const uint8_t
 
             /* Sled Wheel & Tire Channels (0: FL, 1: FR, 2: RL, 3: RR):
              *   0x44..0x53: NormalizedSuspensionTravel[4] (0.0 = stretched .. 1.0 = compressed)
-             *   0x54..0x63: TireSlipRatio[4] (longitudinal slip)
+             *   0x54..0x63: TireSlipRatio[4] (normalized: 0..1.0 = within grip limit, > 1.0 = loss of grip)
              *   0x64..0x73: WheelRotationSpeed[4] (rad/s)
              *   0x74..0x83: WheelOnRumbleStrip[4] (int32: 1 if on curb)
              *   0x94..0xA3: SurfaceRumble[4] (float)
-             *   0xB4..0xC3: TireCombinedSlip[4] (combined lateral + longitudinal slip)
+             *   0xB4..0xC3: TireCombinedSlip[4] (normalized: 0..1.0 = within grip limit, > 1.0 = loss of grip)
              *   0xC4..0xD3: SuspensionTravelMeters[4] (actual travel in meters)
              */
             for (int w = 0; w < 4; ++w) {
@@ -1369,12 +1394,14 @@ bool simhub_parse_packet(gt7_client_t *client, gt7_state_t *state, const uint8_t
 
                 float slip_lon  = fabsf(read_f32_le(raw, 0x54 + w * 4));
                 float slip_comb = fabsf(read_f32_le(raw, 0xB4 + w * 4));
-                float slip = (isfinite(slip_comb) && slip_comb > slip_lon) ? slip_comb : slip_lon;
-                if (!isfinite(slip)) slip = 0.0f;
-                state->tire_slip_ratio[w] = (slip > 1.0f) ? 1.0f : slip;
+                float fz_grip = (isfinite(slip_comb) && slip_comb > slip_lon) ? slip_comb : slip_lon;
+                if (!isfinite(fz_grip)) fz_grip = 0.0f;
+                /* Forza normalized slip: <= 1.0 means 100% traction (map to 0..10% HUD slip); > 1.0 means loss of grip (map to >= 12% slip alert) */
+                float hud_slip = (fz_grip <= 1.0f) ? (fz_grip * 0.10f) : (0.12f + (fz_grip - 1.0f) * 0.60f);
+                state->tire_slip_ratio[w] = (hud_slip > 1.0f) ? 1.0f : hud_slip;
 
                 float wrad = read_f32_le(raw, 0x64 + w * 4);
-                state->wheel_angular_speed[w] = isfinite(wrad) ? wrad : 0.0f;
+                state->wheel_angular_speed[w] = isfinite(wrad) ? fabsf(wrad) : 0.0f;
 
                 int32_t on_curb = read_i32_le(raw, 0x74 + w * 4);
                 float surf_rumb = read_f32_le(raw, 0x94 + w * 4);
@@ -1399,7 +1426,35 @@ bool simhub_parse_packet(gt7_client_t *client, gt7_state_t *state, const uint8_t
             state->powertrain_flags = (fz_drive == 2) ? 0x03 : ((fz_drive == 0) ? 0x01 : 0x02);
 
             if (len >= 311) {
-                size_t dash_off = (len == 324 || len == 323) ? 244 : 232;
+                /* Smart auto-detection between Horizon Dash offset (244) and Motorsport Dash offset (232) */
+                size_t dash_off = (len == 324 || len == 323 || len == 343 || len == 344) ? 244 : 232;
+                if (len >= 244 + 0x4D) {
+                    float vel_mag = sqrtf(state->vel_x * state->vel_x + state->vel_y * state->vel_y + state->vel_z * state->vel_z);
+                    int score_232 = 0, score_244 = 0;
+                    for (int c = 0; c < 2; ++c) {
+                        size_t off = (c == 0) ? 232 : 244;
+                        int sc = 0;
+                        float spd_c  = read_f32_le(raw, off + 0x0C);
+                        float tf0    = read_f32_le(raw, off + 0x18);
+                        float tf1    = read_f32_le(raw, off + 0x1C);
+                        float tf2    = read_f32_le(raw, off + 0x20);
+                        float tf3    = read_f32_le(raw, off + 0x24);
+                        float fuel_c = read_f32_le(raw, off + 0x2C);
+                        uint8_t gr_c = raw[off + 0x4B];
+                        if (isfinite(spd_c) && spd_c >= 0.0f && spd_c < 200.0f && vel_mag > 0.5f && fabsf(spd_c - vel_mag) < 1.5f) sc += 4;
+                        if (isfinite(tf0) && isfinite(tf1) && isfinite(tf2) && isfinite(tf3) &&
+                            tf0 > 35.0f && tf0 < 450.0f && tf1 > 35.0f && tf1 < 450.0f &&
+                            tf2 > 35.0f && tf2 < 450.0f && tf3 > 35.0f && tf3 < 450.0f &&
+                            fabsf(tf0 - tf1) < 80.0f && fabsf(tf2 - tf3) < 80.0f) sc += 4;
+                        if (isfinite(fuel_c) && fuel_c >= 0.0f && fuel_c <= 1.05f) sc += 2;
+                        if (gr_c <= 11) sc += 2;
+                        if (c == 0) score_232 = sc;
+                        else score_244 = sc;
+                    }
+                    if (score_244 > score_232) dash_off = 244;
+                    else if (score_232 > score_244) dash_off = 232;
+                }
+
                 state->pos_x = read_f32_le(raw, dash_off + 0x00);
                 state->pos_y = read_f32_le(raw, dash_off + 0x04);
                 state->pos_z = read_f32_le(raw, dash_off + 0x08);
@@ -1450,14 +1505,21 @@ bool simhub_parse_packet(gt7_client_t *client, gt7_state_t *state, const uint8_t
                  *   ...
                  *   10 = 10th Gear (10 -> state->current_gear = 10)
                  *   >= 11 = Neutral (N -> state->current_gear = -1)
+                 *   Note: When Forza is paused/in menu (is_race_on == 0 and max_rpm == 0), all bytes are 0 -> treat as Neutral (-1).
                  */
                 uint8_t fg = raw[dash_off + 0x4B];
-                if (fg == 0) {
+                if (is_race_on == 0 && max_rpm < 100.0f && cur_rpm < 10.0f) {
+                    state->current_gear = -1;
+                    state->flags |= GT7_FLAG_PAUSED;
+                } else if (fg == 0) {
                     state->current_gear = 0;   /* Reverse (R) */
+                    state->flags &= (uint16_t)~GT7_FLAG_PAUSED;
                 } else if (fg >= 1 && fg <= 10) {
                     state->current_gear = (int)fg; /* 1st .. 10th Gear */
+                    state->flags &= (uint16_t)~GT7_FLAG_PAUSED;
                 } else {
                     state->current_gear = -1;  /* Neutral (N) */
+                    state->flags &= (uint16_t)~GT7_FLAG_PAUSED;
                 }
                 (void)idle_rpm;
 
@@ -1501,10 +1563,15 @@ bool simhub_parse_packet(gt7_client_t *client, gt7_state_t *state, const uint8_t
             state->vel_z = read_f32_le(raw, 0x28);
 
             /* Codemasters wheel order is RL, RR, FL, FR -> map to FL(0), FR(1), RL(2), RR(3) */
-            state->susp_height[2] = read_f32_le(raw, 0x44);
-            state->susp_height[3] = read_f32_le(raw, 0x48);
-            state->susp_height[0] = read_f32_le(raw, 0x4C);
-            state->susp_height[1] = read_f32_le(raw, 0x50);
+            float cm_susp[4];
+            cm_susp[2] = read_f32_le(raw, 0x44);
+            cm_susp[3] = read_f32_le(raw, 0x48);
+            cm_susp[0] = read_f32_le(raw, 0x4C);
+            cm_susp[1] = read_f32_le(raw, 0x50);
+            for (int w = 0; w < 4; ++w) {
+                float sh = fabsf(cm_susp[w]);
+                state->susp_height[w] = (sh > 0.001f && sh < 1.5f) ? (35.0f + sh * 250.0f) : sh;
+            }
 
             float wspd[4];
             wspd[2] = read_f32_le(raw, 0x64);
@@ -1512,9 +1579,9 @@ bool simhub_parse_packet(gt7_client_t *client, gt7_state_t *state, const uint8_t
             wspd[0] = read_f32_le(raw, 0x6C);
             wspd[1] = read_f32_le(raw, 0x70);
             for (int w = 0; w < 4; ++w) {
-                state->wheel_angular_speed[w] = wspd[w] / 0.33f;
-                if (state->speed_ms > 2.0f) {
-                    float s = fabsf(wspd[w] - state->speed_ms) / state->speed_ms;
+                state->wheel_angular_speed[w] = fabsf(wspd[w]) / 0.33f;
+                if (state->speed_ms > 2.0f && fabsf(wspd[w]) > 0.5f) {
+                    float s = fabsf(fabsf(wspd[w]) - state->speed_ms) / state->speed_ms;
                     state->tire_slip_ratio[w] = (s > 1.0f) ? 1.0f : s;
                 } else {
                     state->tire_slip_ratio[w] = 0.0f;
@@ -1538,38 +1605,37 @@ bool simhub_parse_packet(gt7_client_t *client, gt7_state_t *state, const uint8_t
             if (cm_pos > 0) state->race_position = cm_pos;
 
             float raw_max_fc = read_f32_le(raw, 0xFC);
-            float raw_max_c4 = read_f32_le(raw, 0xC4);
-            float raw_max = (raw_max_fc > 100.0f) ? raw_max_fc : raw_max_c4;
-            /* Auto-detect RPM scaling: Codemasters Mode 1 uses either RPM/10 (<= 2200) or direct RPM (> 2200) */
-            float rpm_scale = (eng_r > 2200.0f || raw_max > 2200.0f) ? 1.0f : 10.0f;
+            /* Auto-detect RPM scaling: Codemasters Mode 1 uses RPM/10 (or rad/s) when MaxRpm <= 2500, or direct RPM when > 2500 */
+            float rpm_scale = 10.0f;
+            if (raw_max_fc > 2500.0f || eng_r > 2500.0f) {
+                rpm_scale = 1.0f;
+            }
             state->engine_rpm  = eng_r * rpm_scale;
-            float cm_max_rpm   = raw_max * rpm_scale;
+            float cm_max_rpm   = raw_max_fc * rpm_scale;
             state->rpm_limiter = (cm_max_rpm >= 1000.0f && cm_max_rpm <= 30000.0f) ? (uint16_t)cm_max_rpm : 8500;
-            state->rpm_warning = (uint16_t)(state->rpm_limiter * 0.88f);
+            state->rpm_warning = (uint16_t)(state->rpm_limiter * 0.86f);
 
             float last_f8 = read_f32_le(raw, 0xF8);
-            float last_c0 = read_f32_le(raw, 0xC0);
-            float last_s  = (last_f8 > 1.0f && last_f8 < 1000.0f) ? last_f8 : last_c0;
-            if (last_s > 0.1f) state->last_lap_ms = (int32_t)(last_s * 1000.0f);
+            if (last_f8 > 0.1f && last_f8 < 1000.0f) {
+                state->last_lap_ms = (int32_t)(last_f8 * 1000.0f);
+            }
 
-            int16_t cm_tot_laps = (int16_t)roundf(read_f32_le(raw, 0x104));
-            if (cm_tot_laps > 0) state->total_laps = cm_tot_laps;
+            int16_t cm_tot_laps = (int16_t)roundf(read_f32_le(raw, 0xF0));
+            if (cm_tot_laps <= 0) cm_tot_laps = (int16_t)roundf(read_f32_le(raw, 0x104));
+            if (cm_tot_laps > 0 && cm_tot_laps < 500) state->total_laps = cm_tot_laps;
 
-            /* Support both standard Codemasters tyre temp offsets (0xDC..0xE8) and brake/surface offsets (0xCC..0xD8) */
+            /* Support both custom tyre temp offsets (0xDC..0xE8 when >= 42C) and brake temp synthesis (0xCC..0xD8) */
             float t_rl = read_f32_le(raw, 0xDC);
             float t_rr = read_f32_le(raw, 0xE0);
             float t_fl = read_f32_le(raw, 0xE4);
             float t_fr = read_f32_le(raw, 0xE8);
-            if (t_fl > 5.0f && t_fl < 350.0f) {
+            if (isfinite(t_fl) && t_fl >= 42.0f && t_fl <= 180.0f) {
                 state->tire_temp[2] = t_rl;
                 state->tire_temp[3] = t_rr;
                 state->tire_temp[0] = t_fl;
                 state->tire_temp[1] = t_fr;
             } else {
-                state->tire_temp[2] = read_f32_le(raw, 0xD4);
-                state->tire_temp[3] = read_f32_le(raw, 0xD8);
-                state->tire_temp[0] = read_f32_le(raw, 0xDC);
-                state->tire_temp[1] = read_f32_le(raw, 0xE0);
+                for (int w = 0; w < 4; ++w) state->tire_temp[w] = 0.0f;
             }
 
             float f_in_tank = read_f32_le(raw, 0xB4);

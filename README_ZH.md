@@ -1,5 +1,5 @@
 # GT7 & PC SimHub Switch Sim-DDU Pro (繁體中文)
-**版本號: `_aw_1.11.06.1205` (PS5 GT7 + PC SimHub / Forza Horizon 6 雙遙測引擎 & True OLED Black 旗艦版)**
+**版本號: `_aw_1.11.06.1220` (PS5 GT7 + PC SimHub / Forza Horizon 6 雙遙測引擎 & True OLED Black 旗艦版)**
 
 [English](README_EN.md) | [日本語](README_JA.md) | [Deutsch](README_DE.md)
 
@@ -101,7 +101,7 @@
    - **方式 A（Forza Horizon 5 / 6 經由 SimHub UDP Forwarding 轉發 — 最推薦設定）**：
      1. 在 PC SimHub 選擇《Forza Horizon 5 / 6》，讓 SimHub 自動完成遊戲遙測配置（遊戲將送往本機 SimHub Port）。
      2. 在 SimHub 左側進入 **`Game Config / Settings` -> `UDP Forwarding`（UDP 轉發）**，新增一組轉發目標：目標 IP 填寫 **Switch 的 IP**（可點擊 Switch 畫面下方 `IP: AUTO` 查看 `SWITCH IP`），目標 Port 填寫 **`20777`**（或 **`8000`** / **`33740`**）。
-     3. 韌體已針對 Forza Horizon 專屬 **324-Byte Dash 封包（`dash_off = 244`）** 深度優化：完美對應 `R / N / 1~10 檔` 檔位、全溫域華氏轉攝氏 (`°F -> °C`) 四輪胎溫、四輪綜合滑移率 (`TireSlipRatio` + `TireCombinedSlip`)、四輪正規化避震行程 (`0x44 NormalizedSuspensionTravel`)、路緣石/泥地接觸面識別 (`[T/C/D]`)、動態轉速紅線與車輛組別 (`D/C/B/A/S1/S2/X`)！
+     3. 韌體已針對 Forza Horizon 5 / 6 專屬 **324-Byte Dash 封包（智慧雙偏移自動偵測 `dash_off = 244` vs `232`）** 深度優化：完美對應 `R / N / 1~10 檔` 檔位（含選單暫停全零封包防誤判 `R` 檔保護）、全溫域華氏轉攝氏 (`°F -> °C`) 四輪胎溫、Forza 抓地力極限正規化滑移率 (`1.0` 摩擦圓極限智慧映射至 HUD 紅框/TCS 警示)、四輪正規化避震行程 (`0x44 NormalizedSuspensionTravel`)、路緣石/泥地接觸面識別 (`[T/C/D]`)、動態轉速紅線與車輛組別 (`D/C/B/A/S1/S2/X`)！
    - **方式 B（Forza Horizon 5 / 6 遊戲內 Data Out 直連 Switch）**：
      - 進入遊戲 **`設定 (Settings)` -> `HUD 與遊戲性 (HUD and Gameplay)`**，拉到底部將 **`資料輸出 (Data Out)` 設為 `開啟 (ON)`**、**`資料輸出 IP 位址` 設為 `Switch 的 IP`**、**`資料輸出通訊埠 (Port)` 設為 `8000` 或 `20777`**。
    - **方式 C（Python 零依賴橋接腳本 — 支援 `newData` 與 Forza `RawData`）**：在 PC 上直接執行內附工具：

@@ -12,9 +12,10 @@ extern "C" {
 #define GT7_SEND_PORT    33739
 #define GT7_RECV_PORT    33740
 #define SIMHUB_RECV_PORT 20777
+#define FORZA_RECV_PORT  8000
 #define GT7_MAGIC_G7S0   0x47375330U
 
-#define GT7_APP_VERSION "_aw_1.11.05.2245"
+#define GT7_APP_VERSION "_aw_1.11.06.1205"
 
 #define GT7_TRACE_LEN 160
 #define GT7_TRACK_PTS 500
@@ -216,6 +217,7 @@ typedef struct {
 typedef struct {
     int sock_fd;
     int simhub_sock_fd;      /* Secondary non-blocking UDP socket bound to port 20777 (SimHub default) */
+    int forza_sock_fd;       /* Tertiary non-blocking UDP socket bound to port 8000 (Forza Horizon / SimHub UDP Forwarding) */
     bool auto_detect;        /* True = Auto-detect PS5 / PC SimHub via subnet scan + broadcast (default) */
     char ps5_ip[64];         /* Locked or manual PS5 / PC SimHub IP */
     char local_ip[64];       /* Detected local Wi-Fi IP of Switch/Host */

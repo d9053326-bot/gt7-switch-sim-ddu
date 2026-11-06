@@ -1,5 +1,5 @@
 # GT7 & PC SimHub Switch Sim-DDU Pro (Nintendo Switch Sim Racing & EV Cockpit DDU)
-**Version / 版本號: `_aw_1.11.05.2245` (PS5 GT7 + PC SimHub Dual-Engine & True OLED Black Edition)**
+**Version / 版本號: `_aw_1.11.06.1205` (PS5 GT7 + PC SimHub / Forza Horizon 6 Dual-Engine & True OLED Black Edition)**
 
 <p align="center">
   <b>🌐 Language Navigation / 語言切換 / 言語切替 / Sprachauswahl:</b><br><br>
@@ -92,12 +92,18 @@
 - **一鍵全螢幕 (`FULL`)**：導覽列自動收起，畫面 100% 滿版無黑邊；輕觸左下角即刻跳出全螢幕。
 - **自動偵測 PS5 GT7 與 PC SimHub 雙遙測引擎 (`IP: AUTO`)**：
   - **PS5 / PS5 Pro《Gran Turismo 7》**：開機自動透過 UDP Port `33739` / `33740` 發送心跳封包並解密 `Packet C (368B)` / `Packet ~ (344B)` / `Packet B (316B)` / `Packet A (296B)`。
-  - **PC SimHub 跨平台賽車遊戲支援 (Assetto Corsa / ACC / iRacing / F1 / Forza / rFactor 2 / Dirt Rally 2.0 / EA WRC / BeamNG.drive)**：同時監聽 UDP Port **`20777`** 與 **`33740`**，自動辨識並解析 5 種 PC SimHub 遙測格式，並將所有數據完整映射至 11 種儀表視圖（含四輪扭力向量、ePower/動能回收功率、空力下壓力、單圈三區段與理論最佳圈速）：
-    1. **SimHub Custom UDP JSON / 巢狀 Web API JSON (`SIMHUB JSON`)**（支援單層與巢狀 `{"NewData":{...}}` 及 `DataCorePlugin.GameData.*` 完整屬性名）
-    2. **SimHub / Forza "Data Out" 二進位封包 (`SIMHUB FZA`)** (`232` / `311` / `324` / `331` Bytes)
+  - **PC SimHub 跨平台賽車遊戲與《Forza Horizon 5 / 6》支援 (Assetto Corsa / ACC / iRacing / F1 / Forza Horizon 4/5/6 / Forza Motorsport / rFactor 2 / Dirt Rally 2.0 / EA WRC / BeamNG.drive)**：同時監聽 UDP Port **`20777`**、**`8000`** 與 **`33740`**，自動辨識並解析 5 種 PC SimHub / Forza 遙測格式，並將所有數據完整映射至 11 種儀表視圖（含四輪扭力向量、ePower/動能回收功率、空力下壓力、單圈三區段與理論最佳圈速）：
+    1. **SimHub Custom UDP JSON / 巢狀 Web API JSON (`SIMHUB JSON`)**（支援單層與巢狀 `{"newData":{...}}` / `{"NewData":{...}}` 及 `DataCorePlugin.GameData.*` 與 Forza `RawData.*` 完整屬性名）
+    2. **SimHub / Forza Horizon 5 & 6 "Data Out" 二進位封包 (`SIMHUB FZA`)** (`232` Sled / `311` FM7 Dash / `324` FH4/FH5/FH6 Horizon Dash / `331` FM8 Dash)：
+       - 完美對齊 Forza Horizon 12-Byte Horizon Placeholder 偏移 (`dash_off = 244`)
+       - 精準匹配 Forza 檔位編碼 (`0 = R 倒檔`, `1..10 = 1..10 檔`, `11 = N 空檔`)
+       - 全溫域華氏轉攝氏 (`°F -> °C`) 輪胎溫度轉換、四輪綜合滑移率 (`TireSlipRatio` + `TireCombinedSlip`)、正規化避震行程 (`0x44 NormalizedSuspensionTravel`)、路緣石/砂石路面識別 (`[T/C/D]`) 與車輛等級 (`D/C/B/A/S1/S2/X`)
     3. **SimHub / Codemasters Mode 1 二進位封包 (`SIMHUB CM1`)** (`264` Bytes，自動偵測 `RPM/10` 與直接 `RPM` 倍率)
     4. **SimHub / OutGauge 二進位封包 (`SIMHUB OTG`)** (`92` / `96` Bytes，支援 BeamNG / LFS / Assetto Corsa OutGauge)
-    5. **SimHub Web API 轉發與測試橋接器**：直接執行 `python3 tools/simhub_bridge.py --switch-ip <Switch_IP> --port 20777` 即可將 PC SimHub 60Hz 遙測即時推送至 Switch！
+    5. **Forza Horizon 5 / 6 + SimHub 最佳建議設定**：
+       - **方法 1（SimHub UDP 轉發 — 最推薦）**：在遊戲內讓 SimHub 自動設定遙測（預設 `127.0.0.1`），接著在 SimHub 左側進入 **`Game Config / Settings` -> `UDP Forwarding`**，勾選啟用轉發，目標 IP 填寫 **Switch 的 IP**，目標 Port 填寫 **`20777`**（或 **`8000`** / **`33740`**），即可同時讓 PC SimHub 與 Switch DDU 同步接收 60Hz 完整遙測！
+       - **方法 2（遊戲內直接輸出至 Switch）**：在《Forza Horizon 5 / 6》進入 **`設定 (Settings)` -> `HUD 與遊戲性 (HUD and Gameplay)`**，將 **`資料輸出 (Data Out)` 設為 `開啟 (ON)`**、**`資料輸出 IP 位址` 設為 `Switch 的 IP`**、**`資料輸出通訊埠 (Port)` 設為 `8000` 或 `20777`**。
+       - **方法 3（Python 橋接器）**：執行 `python3 tools/simhub_bridge.py --switch-ip <Switch_IP> --port 20777`（或 `--listen-udp 8000 --switch-ip <Switch_IP>`）。
 - 👉 **[點此閱讀繁體中文完整說明文件](README_ZH.md)**
 
 ---

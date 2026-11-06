@@ -1,5 +1,5 @@
 # GT7 & PC SimHub Switch Sim-DDU Pro (繁體中文)
-**版本號: `_aw_1.11.05.2245` (PS5 GT7 + PC SimHub 雙遙測引擎 & True OLED Black 旗艦版)**
+**版本號: `_aw_1.11.06.1205` (PS5 GT7 + PC SimHub / Forza Horizon 6 雙遙測引擎 & True OLED Black 旗艦版)**
 
 [English](README_EN.md) | [日本語](README_JA.md) | [Deutsch](README_DE.md)
 
@@ -97,11 +97,16 @@
 3. 將記憶卡插回 Switch 並啟動大氣層系統。
 4. 進入 Homebrew 相簿選單，點擊 **GT7 Sim-DDU** 圖標即可啟動！
 5. **PS5《Gran Turismo 7》連線**：確保 Switch 與 PS5 連線至同一個 Wi-Fi 區域網路，進入 GT7 賽道後即可自動偵測並接收 60Hz 遙測！
-6. **PC SimHub 連線（支援 5 種格式免改設定自動識別，完整映射 11 種儀表視圖）**：
-   - **方式 A（SimHub 內建 UDP 轉發）**：在 PC SimHub 進入 `Settings` -> `Plugins` -> `UDP Forwarding`（或在遊戲遙測轉發中），將目標 IP 設為 Switch 的 IP（可點擊 Switch 畫面下方 `IP: AUTO` 查看 `SWITCH IP`），目標 Port 設為 **`20777`**（或 `33740`），格式可任選 **Codemasters (Mode 1, 264B)**、**Forza Data Out (232/311/324/331B)** 或 **OutGauge (92/96B)**。
-   - **方式 B（Python 零依賴橋接腳本）**：在 PC 上直接執行內附工具：
+6. **PC SimHub 與《Forza Horizon 5 / 6》連線（支援 3 組 UDP Port `20777` / `8000` / `33740` 免改設定自動識別，完整映射 11 種儀表視圖）**：
+   - **方式 A（Forza Horizon 5 / 6 經由 SimHub UDP Forwarding 轉發 — 最推薦設定）**：
+     1. 在 PC SimHub 選擇《Forza Horizon 5 / 6》，讓 SimHub 自動完成遊戲遙測配置（遊戲將送往本機 SimHub Port）。
+     2. 在 SimHub 左側進入 **`Game Config / Settings` -> `UDP Forwarding`（UDP 轉發）**，新增一組轉發目標：目標 IP 填寫 **Switch 的 IP**（可點擊 Switch 畫面下方 `IP: AUTO` 查看 `SWITCH IP`），目標 Port 填寫 **`20777`**（或 **`8000`** / **`33740`**）。
+     3. 韌體已針對 Forza Horizon 專屬 **324-Byte Dash 封包（`dash_off = 244`）** 深度優化：完美對應 `R / N / 1~10 檔` 檔位、全溫域華氏轉攝氏 (`°F -> °C`) 四輪胎溫、四輪綜合滑移率 (`TireSlipRatio` + `TireCombinedSlip`)、四輪正規化避震行程 (`0x44 NormalizedSuspensionTravel`)、路緣石/泥地接觸面識別 (`[T/C/D]`)、動態轉速紅線與車輛組別 (`D/C/B/A/S1/S2/X`)！
+   - **方式 B（Forza Horizon 5 / 6 遊戲內 Data Out 直連 Switch）**：
+     - 進入遊戲 **`設定 (Settings)` -> `HUD 與遊戲性 (HUD and Gameplay)`**，拉到底部將 **`資料輸出 (Data Out)` 設為 `開啟 (ON)`**、**`資料輸出 IP 位址` 設為 `Switch 的 IP`**、**`資料輸出通訊埠 (Port)` 設為 `8000` 或 `20777`**。
+   - **方式 C（Python 零依賴橋接腳本 — 支援 `newData` 與 Forza `RawData`）**：在 PC 上直接執行內附工具：
      ```bash
-     # 自動從 PC SimHub 讀取即時遙測並以 60Hz 推送至 Switch
+     # 自動從 PC SimHub Web API (http://127.0.0.1:8888/api/getgamedata) 讀取即時遙測並以 60Hz 推送至 Switch
      python3 tools/simhub_bridge.py --switch-ip <Switch的IP> --port 20777
      ```
-   - **方式 C（SimHub Custom UDP JSON / 巢狀 Web API JSON）**：執行 `python3 tools/simhub_bridge.py --template` 複製 JSON 模板貼入 SimHub Custom UDP 輸出至 `<Switch的IP>:20777`（亦支援直接推送 `DataCorePlugin.GameData.*` 與巢狀 `NewData` JSON）。
+   - **方式 D（SimHub Custom UDP JSON）**：執行 `python3 tools/simhub_bridge.py --template` 複製 JSON 模板貼入 SimHub Custom UDP 輸出至 `<Switch的IP>:20777`。

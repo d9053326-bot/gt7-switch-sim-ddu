@@ -549,7 +549,8 @@ static rgba_t tire_temp_color(float temp_c) {
 
 static char gear_to_char(int gear) {
     if (gear == 0) return 'R';
-    if (gear < 0 || gear > 9) return 'N';
+    if (gear < 0) return 'N';
+    if (gear > 9) return '9';
     return (char)('0' + gear);
 }
 
@@ -1973,7 +1974,7 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     if (spd_frac > 1.0f) spd_frac = 1.0f;
 
     float rpm = state->engine_rpm;
-    float max_rpm = 8000.0f;
+    float max_rpm = (state->rpm_limiter > 1000) ? (float)state->rpm_limiter : 8000.0f;
     float rpm_frac = rpm / max_rpm;
     if (rpm_frac > 1.0f) rpm_frac = 1.0f;
 
@@ -2078,9 +2079,9 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     /* Dynamic Vertical Gear Selector Column & Driving Mode Pill (outside right dial) */
     int gr_x = 1208;
     int gr_y = content_y + content_h - 48;
-    bool is_p = (state->speed_kmh < 1.0f && state->current_gear <= 0);
+    bool is_p = (state->speed_kmh < 0.5f && state->current_gear < 0 && state->throttle_pct < 1.0f && state->engine_rpm < 1400.0f);
     bool is_r = (state->current_gear == 0);
-    bool is_n = (state->current_gear == -1);
+    bool is_n = (state->current_gear == -1 && !is_p);
     bool is_d = (state->current_gear >= 1);
 
     draw_text(r, "R", gr_x, gr_y - 24, 1, is_r ? rgba(255, 195, 45, 255) : text_dim);
@@ -2094,8 +2095,9 @@ static void render_ev_benz_eq(SDL_Renderer *r, const gt7_state_t *state, const h
     } else if (is_n) {
         draw_modern_char(r, 'N', gr_x + 14, gr_y - 22, 16, 24, 4, text_wh);
     } else {
+        int disp_g = (state->current_gear > 9) ? 9 : state->current_gear;
         draw_modern_char(r, 'D', gr_x + 12, gr_y - 22, 14, 24, 4, text_wh);
-        draw_modern_char(r, '0' + state->current_gear, gr_x + 28, gr_y - 20, 12, 20, 3, mb_cyan);
+        draw_modern_char(r, (char)('0' + disp_g), gr_x + 28, gr_y - 20, 12, 20, 3, mb_cyan);
     }
 
     /* Dynamic Drive Mode Pill: [ S ] when throttle > 75%, otherwise [ C ] */
@@ -2403,14 +2405,15 @@ static void render_ev_bmw_i(SDL_Renderer *r, const gt7_state_t *state, const hud
 
     /* Common gear letter */
     char gear_ch = 'D';
-    if (state->speed_kmh < 0.2f && state->throttle_pct < 0.05f) {
-        gear_ch = 'P';
-    } else if (state->current_gear == -1) {
-        gear_ch = 'N';
-    } else if (state->current_gear == 0) {
+    if (state->current_gear == 0) {
         gear_ch = 'R';
-    } else if (state->current_gear > 0 && state->current_gear <= 9) {
-        gear_ch = '0' + state->current_gear;
+    } else if (state->current_gear > 0) {
+        int disp_g = (state->current_gear > 9) ? 9 : state->current_gear;
+        gear_ch = (char)('0' + disp_g);
+    } else if (state->speed_kmh < 0.2f && state->throttle_pct < 0.5f && state->engine_rpm < 1400.0f) {
+        gear_ch = 'P';
+    } else {
+        gear_ch = 'N';
     }
 
     /* Common session trip distance */
@@ -3268,7 +3271,7 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
 
     float speed = ui->use_mph ? state->speed_mph : state->speed_kmh;
     float rpm = state->engine_rpm;
-    float max_rpm = 8000.0f;
+    float max_rpm = (state->rpm_limiter > 1000) ? (float)state->rpm_limiter : 8000.0f;
     float rpm_frac = rpm / max_rpm;
     if (rpm_frac > 1.0f) rpm_frac = 1.0f;
 
@@ -3424,9 +3427,9 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     draw_text_centered(r, ui->use_mph ? "mph" : "km/h", center_disp_x, mid_y + 44, 1, text_dim);
 
     /* Dynamic Gear indicator under speed: P / R / N / D <gear> / S <gear> and DYNAMIC / AUTO / PARK */
-    bool is_p = (state->speed_kmh < 1.0f && state->current_gear <= 0);
+    bool is_p = (state->speed_kmh < 0.5f && state->current_gear < 0 && state->throttle_pct < 1.0f && state->engine_rpm < 1400.0f);
     bool is_r = (state->current_gear == 0);
-    bool is_n = (state->current_gear == -1);
+    bool is_n = (state->current_gear == -1 && !is_p);
     bool is_sport = (state->throttle_pct > 75.0f);
 
     if (is_p) {
@@ -3436,8 +3439,9 @@ static void render_ev_audi_etron(SDL_Renderer *r, const gt7_state_t *state, cons
     } else if (is_n) {
         draw_modern_char(r, 'N', center_disp_x - 12, mid_y + 56, 24, 36, 5, text_wh);
     } else {
+        int disp_g = (state->current_gear > 9) ? 9 : state->current_gear;
         draw_modern_char(r, is_sport ? 'S' : 'D', center_disp_x - 22, mid_y + 56, 20, 36, 5, is_sport ? audi_red : text_wh);
-        draw_modern_char(r, '0' + state->current_gear, center_disp_x + 4, mid_y + 56, 18, 36, 5, is_sport ? audi_red : text_wh);
+        draw_modern_char(r, (char)('0' + disp_g), center_disp_x + 4, mid_y + 56, 18, 36, 5, is_sport ? audi_red : text_wh);
     }
     draw_text_centered(r, is_sport ? "DYNAMIC" : (is_p ? "PARK" : "AUTO"), center_disp_x, mid_y + 98, 1, is_sport ? audi_red : text_dim);
 
@@ -3707,9 +3711,10 @@ static void render_ev_volvo_ex(SDL_Renderer *r, const gt7_state_t *state, const 
 
     /* Massive Gear Letter */
     char cur_gear = 'D';
-    if (state->speed_kmh < 0.2f && state->throttle_pct < 0.05f) cur_gear = 'P';
-    else if (state->current_gear == -1) cur_gear = 'N';
-    else if (state->current_gear == 0) cur_gear = 'R';
+    if (state->current_gear == 0) cur_gear = 'R';
+    else if (state->current_gear >= 1) cur_gear = 'D';
+    else if (state->speed_kmh < 0.2f && state->throttle_pct < 0.5f && state->engine_rpm < 1400.0f) cur_gear = 'P';
+    else cur_gear = 'N';
 
     draw_modern_char(r, cur_gear, right_pod_x + 30, pod_y + 56, 48, 82, 10, text_wh);
 
@@ -4648,7 +4653,7 @@ static void render_ip_modal(SDL_Renderer *r, const gt7_client_t *client, hud_ui_
     draw_text_centered(r, "PS5 GT7 & PC SIMHUB TELEMETRY SETUP", SCREEN_W / 2, my + 18, 2, rgba(0, 225, 255, 255));
 
     char sub_info[256];
-    snprintf(sub_info, sizeof(sub_info), "SWITCH IP: %s  |  PS5: 33740  |  SIMHUB: 20777 / 33740", client->local_ip);
+    snprintf(sub_info, sizeof(sub_info), "SWITCH IP: %s | PS5: 33740 | SIMHUB/FH: 20777 / 8000 / 33740", client->local_ip);
     draw_text_centered(r, sub_info, SCREEN_W / 2, my + 46, 2, rgba(160, 185, 215, 255));
 
     fill_rect(r, mx + 40, my + 72, mw - 80, 50, rgba(0, 0, 0, 255));

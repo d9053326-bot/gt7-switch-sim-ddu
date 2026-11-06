@@ -88,7 +88,7 @@
 
 ## 📦 安裝說明 (Switch 大氣層 Atmosphère)
 
-1. 前往 GitHub Releases 下載最新版 `gt7_switch_hud.nro`。
+1. 前往 [GitHub Releases](https://github.com/d9053326-bot/gt7-switch-sim-ddu/releases) 下載最新版 `gt7_switch_hud.nro`。
 2. 將 Switch 記憶卡插入電腦，將 `gt7_switch_hud.nro` 放入記憶卡路徑：
    ```
    /switch/gt7_hud/gt7_switch_hud.nro

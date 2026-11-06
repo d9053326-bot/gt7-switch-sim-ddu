@@ -176,6 +176,6 @@ Ein natives Homebrew Sim-Racing Dashboard Display Unit (`.nro`) speziell für di
 
 ## 📦 Download & Release (`gt7_switch_hud.nro`)
 
-- 🌐 **GitHub Releases**: [Download v1.10.29.0839](https://github.com/d9053326-bot/gt7-switch-sim-ddu/releases/tag/v1.10.29.0839)
-- 📦 **Direct .NRO Binary**: [gt7_switch_hud.nro (6.52 MB)](https://github.com/d9053326-bot/gt7-switch-sim-ddu/releases/download/v1.10.29.0839/gt7_switch_hud.nro)
+- 🌐 **GitHub Releases**: [Download v1.11.06.1220](https://github.com/d9053326-bot/gt7-switch-sim-ddu/releases/tag/v1.11.06.1220)
+- 📦 **Direct .NRO Binary**: [gt7_switch_hud.nro (6.55 MB)](https://github.com/d9053326-bot/gt7-switch-sim-ddu/releases/download/v1.11.06.1220/gt7_switch_hud.nro)
 - 📂 **Install Path on SD Card**: `/switch/gt7_hud/gt7_switch_hud.nro`
